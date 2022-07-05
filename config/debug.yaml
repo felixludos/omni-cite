@@ -1,0 +1,34 @@
+#_meta.script_name: process-urls
+#_meta.script_name: process-papers
+#_meta.script_name: process-pdfs
+#_meta.script_name: extract-features
+#_meta.script_name: share-pdfs
+_meta.script_name: embed-images
+
+parents: [secrets]
+
+#dry-run: yes
+
+remove-imported: yes
+
+update-existing: yes
+
+paper-types:
+  - conferencePaper
+  - journalArticle
+  - preprint
+
+
+zotero-storage: C:\Users\anwan\Zotero\storage
+zotero-cloud: C:\Users\anwan\OneDrive\Papers\zotero
+wordcloud-root: C:\Users\anwan\OneDrive\Papers\wordclouds
+onedrive-root: C:\Users\anwan\OneDrive
+
+wordcloud._type: wordcloud
+
+
+
+
+
+
+

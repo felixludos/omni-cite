@@ -1,0 +1,13 @@
+tqdm
+tabulate
+pyzotero
+pdfkit
+semanticscholar
+fuzzywuzzy
+wordcloud
+PyPDF2
+wordcloud
+pyperclip
+backoff
+msal
+notion
