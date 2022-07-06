@@ -17,7 +17,7 @@ import PyPDF2
 from fuzzywuzzy import fuzz
 
 from .auth import get_zotero
-from .processing import get_date
+from .processing import get_now
 
 
 def convert_imported(parent, child, storage_root, cloud_root, dry_run):
@@ -118,7 +118,7 @@ def find_pdf(A):
 			if len(imported) > 0:
 				dest = convert_imported(item, imported[0], zotero_storage, cloud_root, dry_run)
 				if not dry_run:
-					out = add_file_attachment(zot, data['key'], 'pdf', str(dest), contentType='application/pdf', accessDate=get_date())
+					out = add_file_attachment(zot, data['key'], 'pdf', str(dest), contentType='application/pdf', accessDate=get_now())
 					
 				pdf = str(dest)
 			
@@ -134,7 +134,7 @@ def find_pdf(A):
 				if len(snapshots) > 0:
 					dest = convert_snapshot(item, snapshots[0], zotero_storage, cloud_root, dry_run)
 					if not dry_run:
-						out = add_file_attachment(zot, data['key'], 'pdf', str(dest), contentType='application/pdf', accessDate=get_date())
+						out = add_file_attachment(zot, data['key'], 'pdf', str(dest), contentType='application/pdf', accessDate=get_now())
 					pdf = str(dest)
 			
 			if pdf is None:
@@ -185,6 +185,12 @@ def filter_wordcloud(children):
 def filter_code_mentions(children):
 	return [child for child in children
 			if child['data']['itemType'] == 'note' and child['data']['note'].startswith('<p>code mentions')]
+
+def filter_semantic_scholar_links(children):
+	return [child for child in children
+			if child['data']['itemType'] == 'attachment' and child['data']['title'] == 'Semantic Scholar'
+			and child['data'].get('linkMode') == 'linked_url']
+
 
 
 def gen_entry_filename(item):
@@ -465,7 +471,7 @@ def extract_features(A):
 				if not dry_run:
 					wordcloud.to_image().save(str(dest), "JPEG")
 					out = add_file_attachment(zot, data['key'], 'wordcloud', str(dest), contentType='image/jpg',
-					                          note=words, accessDate=get_date())
+					                          note=words, accessDate=get_now())
 			else:
 				added_error = True
 				extract_warning(item, 'Too many PDFs' if len(pdfs) else 'No PDFs found')
@@ -528,6 +534,102 @@ def extract_features(A):
 		print(tabulate(sorted(errors, key=lambda x: (x[1], x[2])), headers=['Key', 'Type', 'Title', 'Msg']))
 
 	return new, errors
+
+
+# @fig.Script('semantic-scholar-links')
+# def process_papers(A):
+# 	dry_run = A.pull('dry-run', False)
+# 	silent = A.pull('silent', False)
+#
+# 	match_ratio = A.pull('match-ratio', 92)
+# 	update_existing = A.pull('update-existing', False)
+#
+# 	paper_types = A.pull('paper-types', ['conferencePaper', 'journalArticle', 'preprint'])
+# 	paper_types = set(paper_types)
+#
+# 	zot = get_zotero(A)
+# 	itr = tqdm(zot.top())
+#
+# 	new = []
+# 	errors = []
+#
+# 	base = 'http://api.semanticscholar.org/graph/v1/paper/search?query={}'
+#
+# 	for item in itr:
+# 		data = item['data']
+# 		itr.set_description('Processing papers {}'.format(data['key']))
+# 		if data['itemType'] not in paper_types:
+# 			errors.append([data['key'], data['itemType'], data['title'], 'Bad item type'])
+# 		elif update_existing or not any(line.startswith('SemanticScholar ID: ')
+# 		                                for line in data.get('extra', '').split('\n')):
+# 			query = clean_up_url(data['title'])
+# 			url = base.format(query)
+#
+# 			if dry_run:
+# 				out = url
+# 			else:
+# 				try:
+# 					out = requests.get(url).json()
+# 				# out = out['data'][0].get('paperId')
+# 				except Exception as e:
+# 					errors.append([data['key'], data['itemType'], data['title'], f'{type(e).__name__}: {e}'])
+# 					out = None
+# 				else:
+# 					for res in out.get('data', []):
+# 						if fuzz.ratio(res.get('title', ''), data['title']) >= match_ratio:
+# 							out = res.get('paperId', '')
+# 							break
+# 					else:
+# 						out = ''
+#
+# 			if out is not None:
+# 				# data['semanticscholar'] = out
+# 				if len(out):
+# 					new.append([data['key'], data['itemType'], data['title'], out])
+#
+# 					extra = data['extra']
+#
+# 					if len(extra):
+# 						lines = extra.split('\n')
+# 						i = None
+# 						for i, line in enumerate(lines):
+# 							if line.startswith('SemanticScholar ID: '):
+# 								old = line.split('SemanticScholar ID: ')[-1]
+# 								lines[i] = f'SemanticScholar ID: {out}'
+# 								errors.append(
+# 									[data['key'], data['itemType'], data['title'], f'replacing {old} with {out}'])
+# 								break
+# 						else:
+# 							lines.append(f'SemanticScholar ID: {out}')
+# 							new.append([data['key'], data['itemType'], data['title'], out])
+# 						data['extra'] = '\n'.join(lines)
+# 					else:
+# 						data['extra'] = f'SemanticScholar ID: {out}'
+#
+# 					if not dry_run:
+# 						zot.update_item(data)
+# 				else:
+# 					errors.append([data['key'], data['itemType'], data['title'], out])
+#
+# 	if not silent:
+# 		print('New')
+# 		print(tabulate(new, headers=['Key', 'Type', 'Title', 'SemanticScholar ID']))
+#
+# 		print('Errors')
+# 		print(tabulate(errors, headers=['Key', 'Type', 'Title', 'Error']))
+#
+# 	return new, errors
+
+
+
+
+
+
+
+
+
+
+
 
 
 
