@@ -50,11 +50,15 @@ def fill_in_urls(A):
 	
 	update_existing = A.pull('update-existing', False)
 	
+	marked = []
 	new = []
 	def add_new(item, msg):
+		marked.append(item)
 		new.append([item, msg])
 	errors = []
 	def add_error(item, msg):
+		if brand_errors:
+			marked.append(item)
 		errors.append([item, msg])
 	
 	A.push('url-maker._type', 'default-url', overwrite=False, silent=True)
@@ -62,8 +66,6 @@ def fill_in_urls(A):
 	
 	zot = A.pull('zotero')
 	itr = tqdm(zot.top(brand_tag=brand_tag if ignore_brand_tag else None))
-	
-	marked = []
 	
 	for item in itr:
 		data = item['data']
@@ -75,14 +77,14 @@ def fill_in_urls(A):
 			except Exception as e:
 				add_error(item, f'{type(e)}: {str(e)}')
 			else:
+				msg = f'Unchanged: {current}'
 				if url is not None and url != current:
 					data['url'] = url
-					add_new(item, f'{repr(current)} -> {repr(url)}')
-				marked.append(item)
+					msg = f'{repr(current)} -> {repr(url)}'
+				add_new(item, msg)
+				# marked.append(item)
 	
 	if not dry_run:
-		if brand_errors and brand_tag is not None:
-			marked.extend([item for item, msg in errors])
 		zot.update_items(marked, brand_tag=brand_tag)
 	
 	if not silent:
@@ -136,8 +138,6 @@ class SemanticScholarMatcher(fig.Configurable):
 		return ''
 	
 	
-	
-
 
 @fig.Script('link-semantic-scholar')
 def link_semantic_scholar(A):
@@ -154,11 +154,15 @@ def link_semantic_scholar(A):
 	if paper_types is not None and not isinstance(paper_types, str):
 		paper_types = ' || '.join(paper_types)
 	
+	marked = []
 	new = []
 	def add_new(item, msg):
+		marked.append(item)
 		new.append([item, msg])
 	errors = []
 	def add_error(item, msg):
+		if brand_errors:
+			marked.append(item)
 		errors.append([item, msg])
 	
 	A.push('semantic-scholar-matcher._type', 'semantic-scholar-matcher', overwrite=False, silent=True)
@@ -171,7 +175,6 @@ def link_semantic_scholar(A):
 	
 	updates = []
 	ss = []
-	marked = []
 	
 	for item in itr:
 		data = item['data']
@@ -181,19 +184,22 @@ def link_semantic_scholar(A):
 		
 		if len(existing) > 1:
 			add_error(item, f'Multiple {repr(attachment_name)} attachments')
-		else:
+		elif len(existing) == 0 or update_existing or not len(existing[0]['data']['url']):
 			ssurl = matcher.find(item)
-			add_new(item, ssurl)
-			marked.append(item)
+		
 			if len(existing) == 1:
+				old = existing[0]['data']['url']
 				existing[0]['data']['url'] = ssurl
+				add_new(item, f'{repr(old)} -> {repr(ssurl)}')
 				updates.append(existing[0])
 			else:
+				add_new(item, ssurl)
 				ss.append(create_url(attachment_name, ssurl, parentItem=data['key']))
+		else:
+			old = existing[0]['data']['url']
+			add_new(item, f'Unchanged: {old}')
 			
 	if not dry_run:
-		if brand_errors and brand_tag is not None:
-			marked.extend([item for item, msg in errors])
 		if len(marked):
 			zot.update_items(marked, brand_tag=brand_tag)
 		if len(updates):
@@ -207,7 +213,7 @@ def link_semantic_scholar(A):
 
 
 
-@fig.Script('process-papers')
+# @fig.Script('process-papers')
 def process_papers(A):
 	dry_run = A.pull('dry-run', False)
 	silent = A.pull('silent', False)
