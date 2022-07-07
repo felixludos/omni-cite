@@ -29,6 +29,10 @@ class ZoteroProcess(fig.Configurable):
 		return self.zot.update_items(items, **kwargs)
 
 
+	def create_items(self, items, **kwargs):
+		return self.zot.create_items(items, **kwargs)
+
+
 	def top(self, brand_tag=None, **kwargs):
 		if len(kwargs) or brand_tag is not None:
 			return self.collect(top=True, brand_tag=brand_tag, **kwargs)

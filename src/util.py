@@ -1,3 +1,4 @@
+import copy
 from datetime import datetime, timezone
 from tabulate import tabulate
 
@@ -26,5 +27,71 @@ def print_new_errors(new, errors):
 	print(tabulate(errors, headers=['Key', 'Type', 'Title', 'Error']))
 	
 	pass
+
+
+
+
+_note_template = {'itemType': 'note',
+ 'note': '',
+ 'tags': [],
+ 'collections': [],
+ 'relations': {}}
+
+
+def create_note(note, **kwargs):
+	data = copy.deepcopy(_note_template)
+	data.update(kwargs)
+	data['note'] = note
+	return data
+	
+
+_file_template = {
+   'itemType': 'attachment',
+   'linkMode': 'linked_file',
+   'title': '',
+   'accessDate': '',
+   'url': '',
+   'note': '',
+   'contentType': '',
+   'charset': '',
+   'path': '',
+   'tags': [],
+   'relations': {},}
+
+
+def create_file(title, path, **kwargs):
+	data = copy.deepcopy(_file_template)
+	data.update(kwargs)
+	data['title'] = title
+	data['path'] = str(path)
+	return data
+
+
+_link_template = {'itemType': 'attachment',
+ 'linkMode': 'linked_url',
+ 'title': '',
+ 'accessDate': '',
+ 'url': '',
+ 'note': '',
+ 'tags': [],
+ 'collections': [],
+ 'relations': {},
+ 'contentType': '',
+ 'charset': ''}
+
+
+def create_url(title, url, **kwargs):
+	data = copy.deepcopy(_link_template)
+	data.update(kwargs)
+	data['title'] = title
+	data['url'] = url
+	return data
+
+
+
+
+
+
+
 
 

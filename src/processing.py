@@ -8,7 +8,7 @@ import urllib.parse
 import requests
 from fuzzywuzzy import fuzz
 
-from .util import print_new_errors
+from .util import print_new_errors, create_url
 from .auth import get_zotero
 
 
@@ -140,7 +140,7 @@ class SemanticScholarMatcher(fig.Configurable):
 
 
 @fig.Script('link-semantic-scholar')
-def fill_in_urls(A):
+def link_semantic_scholar(A):
 	dry_run = A.pull('dry-run', False)
 	silent = A.pull('silent', False)
 	
@@ -157,7 +157,6 @@ def fill_in_urls(A):
 	new = []
 	def add_new(item, msg):
 		new.append([item, msg])
-	
 	errors = []
 	def add_error(item, msg):
 		errors.append([item, msg])
@@ -170,6 +169,8 @@ def fill_in_urls(A):
 	
 	attachment_name = 'Semantic Scholar'
 	
+	updates = []
+	ss = []
 	marked = []
 	
 	for item in itr:
@@ -180,29 +181,25 @@ def fill_in_urls(A):
 		
 		if len(existing) > 1:
 			add_error(item, f'Multiple {repr(attachment_name)} attachments')
-			
 		else:
 			ssurl = matcher.find(item)
-			
-			if len(ssurl):
-				pass
-			
-		
-		if current == '' or update_existing:
-			try:
-				url = url_maker.create_url(item)
-			except Exception as e:
-				add_error(item, f'{type(e)}: {str(e)}')
+			add_new(item, ssurl)
+			marked.append(item)
+			if len(existing) == 1:
+				existing[0]['data']['url'] = ssurl
+				updates.append(existing[0])
 			else:
-				if url is not None and url != current:
-					data['url'] = url
-					add_new(item, f'{repr(current)} -> {repr(url)}')
-				marked.append(item)
-	
+				ss.append(create_url(attachment_name, ssurl, parentItem=data['key']))
+			
 	if not dry_run:
 		if brand_errors and brand_tag is not None:
 			marked.extend([item for item, msg in errors])
-		zot.update_items(marked, brand_tag=brand_tag)
+		if len(marked):
+			zot.update_items(marked, brand_tag=brand_tag)
+		if len(updates):
+			zot.update_items(updates)
+		if len(ss):
+			zot.create_items(ss)
 	
 	if not silent:
 		print_new_errors(new, errors)
