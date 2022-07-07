@@ -17,55 +17,237 @@ import pdfkit
 import PyPDF2
 from fuzzywuzzy import fuzz
 
-from .auth import get_zotero, get_onedrive
+# from .auth import get_onedrive
 from .attachments import gen_entry_filename, add_link_attachment, filter_linked_pdfs, filter_wordcloud
+from .util import create_file, create_url, create_note, print_new_errors, get_now
 
 
-def filter_share_links(children):
-	return [child for child in children
-			if child['data']['itemType'] == 'attachment' and child['data']['title'] == 'OneDrive'
-			and child['data'].get('linkMode') == 'linked_url'
-			and child['data'].get('contentType') == ''
-	        ]
-
-
-# @backoff.on_exception(backoff.expo,
-#                       requests.exceptions.RequestException,
-#                       max_tries=8,
-#                       jitter=None)
-# def get_url(url, req_type='get', **kwargs):
-# 	out = requests.post(url, **kwargs) if req_type == 'post' else requests.get(url, **kwargs)
+# @fig.Script('onedrive-links')
+# def onedrive_links(A):
+# 	dry_run = A.pull('dry-run', False)
+# 	silent = A.pull('silent', False)
 #
-# 	if out.status_code == 429:
-# 		raise requests.exceptions.RequestException
+# 	brand_tag = A.pull('brand-tag', 'code')
+# 	ignore_brand_tag = A.pull('ignore-brand', False)
+# 	brand_errors = A.pull('brand-errors', False)
 #
-# 	return out
+# 	cloud_root = Path(A.pull('zotero-cloud-storage', str(Path.home() / 'OneDrive/Papers/zotero')))
+# 	if not cloud_root.exists():
+# 		os.makedirs(str(cloud_root))
+#
+# 	onedrive_root = Path(A.pull('onedrive-root', str(Path.home() / 'OneDrive')))
+#
+# 	source_name = A.pull('source-name', 'PDF')
+#
+# 	link_name = 'OneDrive'
+#
+# 	marked = []
+# 	new = []
+# 	def add_new(item, msg):
+# 		marked.append(item)
+# 		new.append([item, msg])
+# 	errors = []
+# 	def add_error(item, msg):
+# 		if brand_errors:
+# 			marked.append(item)
+# 		errors.append([item, msg])
+#
+# 	A.push('onedrive._type', 'onedrive-auth', overwrite=False, silent=True)
+# 	auth = A.pull('onedrive')
+# 	auth.authorize()
+#
+# 	A.push('zotero._type', 'zotero', overwrite=False, silent=True)
+# 	zot = A.pull('zotero')
+#
+# 	connection = cloud_root.relative_to(onedrive_root)
+#
+# 	file_info = auth.list_dir(connection)
+# 	file_id_table = {item['name']: item['webUrl'] for item in file_info}
+#
+# 	updated_links = []
+# 	new_links = []
+#
+# 	timestamp = get_now()
+#
+# 	itr = tqdm(zot.top(brand_tag=brand_tag if ignore_brand_tag else None))
+# 	for item in itr:
+# 		data = item['data']
+# 		itr.set_description('OneDrive Links {}'.format(data['key']))
+#
+# 		attachments = zot.children(data['key'], itemType='attachment')
+#
+# 		existing = [entry for entry in attachments
+# 		            if entry['data']['title'] == link_name
+# 		            and entry['data'].get('linkMode') == 'linked_url']
+#
+# 		sources = [source for source in attachments
+# 		           if source['data']['itemType'] == 'attachment'
+# 		           and (source_name is None or source['data']['title'] == source_name)
+# 		           and source['data'].get('contentType') == 'application/pdf']
+# 		missing = [source for source in sources if 'path' not in source['data']
+# 		           or Path(source['data']['path']).name not in file_id_table]
+#
+# 		if len(existing) > 1:
+# 			add_error(item, 'Found multiple code link notes')
+# 		else:
+# 			if len(sources) > 1:
+# 				found = '\n'.join([' - {}'.format(entry['data']['title']) for entry in missing])
+# 				add_error(item, f'Too many sources found: \n{found}')
+# 			elif len(sources) == 0:
+# 				add_error(item, 'No source/s found')
+# 			elif len(missing):
+# 				found = '\n'.join([' - {}'.format(entry['data']['title']) for entry in missing])
+# 				add_error(item, f'File not found: \n{found}')
+# 			else:
+# 				url = file_id_table[Path(sources[0]['data']['path']).name]
+# 				add_new(item, url)
+# 				if len(existing) == 1:
+# 					existing[0]['data']['url'] = url
+# 					existing[0]['data']['accessDate'] = timestamp
+# 					updated_links.append(existing[0])
+# 				else:
+# 					url_obj = create_url(link_name, url, parentItem=data['key'],
+# 					                     accessDate=timestamp)
+# 					new_links.append(url_obj)
+#
+# 	if not dry_run:
+# 		if len(marked):
+# 			zot.update_items(marked, brand_tag=brand_tag)
+# 		if len(updated_links):
+# 			zot.update_items(updated_links)
+# 		if len(new_links):
+# 			zot.create_items(new_links)
+#
+# 	if not silent:
+# 		print_new_errors(new, errors)
+# 	return new, errors
 
 
-def batch_share_links(file_ids, header, share=True):
-	def generate_request(url, method='GET', **kwargs):
-		req = {'method': method.upper(), 'url': url, **kwargs}
-		return req
+
+@fig.Script('onedrive-links')
+def onedrive_sharing(A):
+	dry_run = A.pull('dry-run', False)
+	silent = A.pull('silent', False)
 	
-	permissions = {"type": "edit", "scope": "anonymous"} if share else {'type': 'embed', "scope": "anonymous"}
-	reqs = [generate_request(f'/me/drive/items/{item_id}/createLink', method='POST',
-	                         body=permissions,
-	                         headers={'content-type': 'application/json'})
-	        for item_id in file_ids]
-	for i, req in enumerate(reqs):
-		req['id'] = str(i + 1)
+	title = A.pull('title', 'OneDrive Links', silent=True)
 	
-	body = {'requests': reqs}
+	brand_tag = A.pull('brand-tag', 'code')
+	ignore_brand_tag = A.pull('ignore-brand', False)
+	brand_errors = A.pull('brand-errors', False)
 	
-	resp = requests.post('https://graph.microsoft.com/v1.0/$batch', json=body,
-	                      headers={'content-type': 'application/json', **header})
-	out = resp.json()
-	links = [r['body']['link']['webUrl'] for r in sorted(out['responses'], key=lambda r: r['id'])]
+	# cloud_root = Path(A.pull('zotero-cloud-storage', str(Path.home() / 'OneDrive/Papers/zotero')))
+	# if not cloud_root.exists():
+	# 	os.makedirs(str(cloud_root))
 	
-	return links
+	onedrive_root = Path(A.pull('onedrive-root', str(Path.home() / 'OneDrive')))
+	
+	source_name = A.pull('source-name', 'PDF')
+	attachment_name = A.pull('attachment-name', None)
+	share_type = A.pull('share-type', None)
+	
+	# link_names = {'view': 'OneDrive View', 'edit': 'OneDrive Edit'}
+	# link_name = link_names.get(share_type, 'OneDrive')
+	
+	marked = []
+	new = []
+	def add_new(item, msg):
+		marked.append(item)
+		new.append([item, msg])
+	errors = []
+	def add_error(item, msg):
+		if brand_errors:
+			marked.append(item)
+		errors.append([item, msg])
+	
+	A.push('onedrive._type', 'onedrive-auth', overwrite=False, silent=True)
+	auth = A.pull('onedrive')
+	auth.authorize()
+	
+	A.push('zotero._type', 'zotero', overwrite=False, silent=True)
+	zot = A.pull('zotero')
+	
+	# connection = cloud_root.relative_to(onedrive_root)
+	
+	# file_info = auth.list_dir(connection)
+	# file_id_table = {item['name']: item['webUrl'] for item in file_info}
+	
+	attachments = zot.collect(q=source_name, itemType='attachment',
+		brand_tag=brand_tag if ignore_brand_tag else None)
+	attachments = [item for item in attachments
+	               if item['data']['linkMode'] == 'linked_file']
+	
+	updated_items = []
+	new_items = []
+	
+	timestamp = get_now()
+	
+	paths = {}
+	
+	itr = tqdm(attachments)
+	for item in itr:
+		data = item['data']
+		itr.set_description('{} {}'.format(title, data['key']))
+		
+		path = Path(data['path'])
+		
+		try:
+			loc = path.relative_to(onedrive_root)
+		except ValueError:
+			add_error(item, f'Path not in OneDrive: {path}')
+		else:
+			paths[loc] = item
+		
+	
+		
+		attachments = zot.children(data['key'], itemType='attachment')
+		
+		existing = [entry for entry in attachments
+		            if entry['data']['title'] == link_name
+		            and entry['data'].get('linkMode') == 'linked_url']
+		
+		sources = [source for source in attachments
+		           if source['data']['itemType'] == 'attachment'
+		           and (source_name is None or source['data']['title'] == source_name)
+		           and source['data'].get('contentType') == 'application/pdf']
+		missing = [source for source in sources if 'path' not in source['data']
+		           or Path(source['data']['path']).name not in file_id_table]
+		
+		if len(existing) > 1:
+			add_error(item, 'Found multiple code link notes')
+		else:
+			if len(sources) > 1:
+				found = '\n'.join([' - {}'.format(entry['data']['title']) for entry in missing])
+				add_error(item, f'Too many sources found: \n{found}')
+			elif len(sources) == 0:
+				add_error(item, 'No source/s found')
+			elif len(missing):
+				found = '\n'.join([' - {}'.format(entry['data']['title']) for entry in missing])
+				add_error(item, f'File not found: \n{found}')
+			else:
+				url = file_id_table[Path(sources[0]['data']['path']).name]
+				add_new(item, url)
+				if len(existing) == 1:
+					existing[0]['data']['url'] = url
+					existing[0]['data']['accessDate'] = timestamp
+					updated_links.append(existing[0])
+				else:
+					url_obj = create_url(link_name, url, parentItem=data['key'],
+					                     accessDate=timestamp)
+					new_links.append(url_obj)
+	
+	if not dry_run:
+		if len(marked):
+			zot.update_items(marked, brand_tag=brand_tag)
+		if len(updated_links):
+			zot.update_items(updated_links)
+		if len(new_links):
+			zot.create_items(new_links)
+	
+	if not silent:
+		print_new_errors(new, errors)
+	return new, errors
 
 
-@fig.Script('share-pdfs')
 def share_pdfs(A):
 	dry_run = A.pull('dry-run', False)
 	silent = A.pull('silent', False)
@@ -79,8 +261,9 @@ def share_pdfs(A):
 	onedrive_root = Path(A.pull('onedrive-root', str(Path.home() / 'OneDrive')))
 	
 	update_existing = A.pull('update-existing', False)
-	
-	zot = get_zotero(A)
+
+	A.push('zotero._type', 'zotero', overwrite=False, silent=True)
+	zot = A.pull('zotero')
 	
 	_header = get_onedrive(A)
 	
@@ -157,7 +340,7 @@ def share_pdfs(A):
 	return new, errors
 
 
-@fig.Script('embed-images')
+# @fig.Script('embed-images')
 def embed_images(A):
 	dry_run = A.pull('dry-run', False)
 	silent = A.pull('silent', False)
@@ -256,6 +439,36 @@ def is_in_dir(path, base):
 
 
 
+# def filter_share_links(children):
+# 	return [child for child in children
+# 			if child['data']['itemType'] == 'attachment' and child['data']['title'] == 'OneDrive'
+# 			and child['data'].get('linkMode') == 'linked_url'
+# 			and child['data'].get('contentType') == ''
+# 	        ]
+
+
+
+# def batch_share_links(file_ids, header, share=True):
+# 	def generate_request(url, method='GET', **kwargs):
+# 		req = {'method': method.upper(), 'url': url, **kwargs}
+# 		return req
+#
+# 	permissions = {"type": "edit", "scope": "anonymous"} if share else {'type': 'embed', "scope": "anonymous"}
+# 	reqs = [generate_request(f'/me/drive/items/{item_id}/createLink', method='POST',
+# 	                         body=permissions,
+# 	                         headers={'content-type': 'application/json'})
+# 	        for item_id in file_ids]
+# 	for i, req in enumerate(reqs):
+# 		req['id'] = str(i + 1)
+#
+# 	body = {'requests': reqs}
+#
+# 	resp = requests.post('https://graph.microsoft.com/v1.0/$batch', json=body,
+# 	                      headers={'content-type': 'application/json', **header})
+# 	out = resp.json()
+# 	links = [r['body']['link']['webUrl'] for r in sorted(out['responses'], key=lambda r: r['id'])]
+#
+# 	return links
 
 
 
