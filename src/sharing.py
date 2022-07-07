@@ -17,6 +17,7 @@ import pdfkit
 import PyPDF2
 from fuzzywuzzy import fuzz
 
+<<<<<<< HEAD
 # from .auth import get_onedrive
 from .attachments import gen_entry_filename, add_link_attachment, filter_linked_pdfs, filter_wordcloud
 from .util import create_file, create_url, create_note, print_new_errors, get_now
@@ -121,6 +122,19 @@ from .util import create_file, create_url, create_note, print_new_errors, get_no
 # 	if not silent:
 # 		print_new_errors(new, errors)
 # 	return new, errors
+=======
+from .auth import get_onedrive
+from .attachments import gen_entry_filename, add_link_attachment, filter_linked_pdfs, filter_wordcloud
+from .util import create_file, create_url, create_note, print_new_errors
+
+
+def filter_share_links(children):
+	return [child for child in children
+			if child['data']['itemType'] == 'attachment' and child['data']['title'] == 'OneDrive'
+			and child['data'].get('linkMode') == 'linked_url'
+			and child['data'].get('contentType') == ''
+	        ]
+>>>>>>> e6b37b5e073fbd52df479099bbc800eab4fbd990
 
 
 
@@ -248,6 +262,106 @@ def onedrive_sharing(A):
 	return new, errors
 
 
+<<<<<<< HEAD
+=======
+@fig.Script('onedrive-links')
+def onedrive_links(A):
+	dry_run = A.pull('dry-run', False)
+	silent = A.pull('silent', False)
+	
+	brand_tag = A.pull('brand-tag', 'code')
+	ignore_brand_tag = A.pull('ignore-brand', False)
+	brand_errors = A.pull('brand-errors', False)
+	
+	cloud_root = Path(A.pull('zotero-cloud-storage', str(Path.home() / 'OneDrive/Papers/zotero')))
+	if not cloud_root.exists():
+		os.makedirs(str(cloud_root))
+	
+	onedrive_root = Path(A.pull('onedrive-root', str(Path.home() / 'OneDrive')))
+	
+	source_name = A.pull('source-name', 'PDF')
+	link_name = 'OneDrive'
+	# link_name = {None: 'OneDrive', 'view': 'OneDrive View', 'edit': 'OneDrive Edit'}
+	
+	marked = []
+	new = []
+	def add_new(item, msg):
+		marked.append(item)
+		new.append([item, msg])
+	errors = []
+	def add_error(item, msg):
+		if brand_errors:
+			marked.append(item)
+		errors.append([item, msg])
+	
+	A.push('onedrive._type', 'onedrive-auth', overwrite=False, silent=True)
+	auth = A.pull('onedrive')
+	auth.authorize()
+
+	A.push('zotero._type', 'zotero', overwrite=False, silent=True)
+	zot = A.pull('zotero')
+	
+	connection = cloud_root.relative_to(onedrive_root)
+	
+	file_info = auth.list_dir(connection)
+	file_id_table = {item['name']: item['webUrl'] for item in file_info}
+	
+	updated_links = []
+	new_links = []
+
+	itr = tqdm(zot.top(brand_tag=brand_tag if ignore_brand_tag else None))
+	for item in itr:
+		data = item['data']
+		itr.set_description('OneDrive Links {}'.format(data['key']))
+		
+		attachments = zot.children(data['key'], itemType='attachment')
+		
+		existing = [entry for entry in attachments
+		            if entry['data']['title'] == link_name
+		            and entry['data'].get('linkMode') == 'linked_url']
+		
+		sources = [source for source in attachments
+		           if source['data']['itemType'] == 'attachment'
+		           and (source_name is None or source['data']['title'] == source_name)
+		           and source['data'].get('contentType') == 'application/pdf']
+		missing = [source for source in sources if 'path' not in source['data']
+		           or Path(source['data']['path']).name not in file_id_table]
+		
+		if len(existing) > 1:
+			add_error(item, 'Found multiple code link notes')
+		else:
+			if len(sources) > 1:
+				found = '\n'.join([' - {}'.format(entry['data']['title']) for entry in missing])
+				add_error(item, f'Too many sources found: \n{found}')
+			elif len(sources) == 0:
+				add_error(item, 'No source/s found')
+			elif len(missing):
+				found = '\n'.join([' - {}'.format(entry['data']['title']) for entry in missing])
+				add_error(item, f'File not found: \n{found}')
+			else:
+				url = file_id_table[Path(sources[0]['data']['path']).name]
+				add_new(item, url)
+				if len(existing) == 1:
+					existing[0]['data']['url'] = url
+					updated_links.append(existing[0])
+				else:
+					url_obj = create_url(link_name, url, parentItem=data['key'])
+					new_links.append(url_obj)
+	
+	if not dry_run:
+		if len(marked):
+			zot.update_items(marked, brand_tag=brand_tag)
+		if len(updated_links):
+			zot.update_items(updated_links)
+		if len(new_links):
+			zot.create_items(new_links)
+	
+	if not silent:
+		print_new_errors(new, errors)
+	return new, errors
+
+
+>>>>>>> e6b37b5e073fbd52df479099bbc800eab4fbd990
 def share_pdfs(A):
 	dry_run = A.pull('dry-run', False)
 	silent = A.pull('silent', False)

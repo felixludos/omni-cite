@@ -218,7 +218,6 @@ class OneDriveProcess(fig.Configurable):
 	# 	                     headers={'content-type': 'application/json', **header}))
 	# 	links = [r['body']['link']['webUrl'] for r in sorted(out['responses'], key=lambda r: r['id'])]
 	# 	return links
-	
 
 # _onedrive = None
 # def get_onedrive(A):
