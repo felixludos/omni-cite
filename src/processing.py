@@ -14,7 +14,6 @@ from .util import create_url, get_now, Script_Manager, split_by_filter
 from .auth import ZoteroProcess
 
 
-
 @fig.Component('default-url')
 class Default_URL_Maker(fig.Configurable):
 	def create_url(self, item):

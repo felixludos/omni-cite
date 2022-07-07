@@ -136,7 +136,6 @@ class OneDriveProcess(fig.Configurable):
 	endpoint = 'https://graph.microsoft.com/v1.0/me'
 	
 	def send_request(self, send_fn, retry=1):
-		
 		if self.is_expired():
 			self.authorize()
 		
@@ -165,7 +164,7 @@ class OneDriveProcess(fig.Configurable):
 		reqs = [self.generate_request(f'/me/drive/root:/{path}') for path in paths]
 		out = self.batch_send(reqs)
 		return out
-	
+
 	
 	def share_files(self, paths, mode='view'):
 		reqs = [self.generate_request(f'/me/drive/root:/{path}:/createLink',
@@ -187,7 +186,7 @@ class OneDriveProcess(fig.Configurable):
 	@staticmethod
 	def generate_request(url, method='GET', **kwargs):
 		return {'method': method.upper(), 'url': url, **kwargs}
-	
+
 	
 	def batch_send(self, reqs):
 		for i, req in enumerate(reqs):
@@ -200,49 +199,3 @@ class OneDriveProcess(fig.Configurable):
 			return out
 		return sorted(out['responses'], key=lambda r: r['id'])
 	
-	# def share_links(self, file_ids, mode='view'):
-	# 	if self.is_expired():
-	# 		self.authorize()
-	#
-	# 	permissions = {"type": {'download': 'embed'}.get(mode, mode), "scope": "anonymous"}
-	# 	reqs = [self.generate_request(f'/me/drive/items/{item_id}/createLink', method='POST',
-	# 	                         body=permissions,
-	# 	                         headers={'content-type': 'application/json'})
-	# 	        for item_id in file_ids]
-	# 	for i, req in enumerate(reqs):
-	# 		req['id'] = str(i + 1)
-	#
-	# 	body = {'requests': reqs}
-	#
-	# 	out = self.send_request(lambda header:
-	# 	                        requests.post('https://graph.microsoft.com/v1.0/$batch', json=body,
-	# 	                     headers={'content-type': 'application/json', **header}))
-	# 	links = [r['body']['link']['webUrl'] for r in sorted(out['responses'], key=lambda r: r['id'])]
-	# 	return links
-
-# _onedrive = None
-# def get_onedrive(A):
-# 	global _onedrive
-#
-# 	if _onedrive is None:
-#
-# 		app_id = A.pull('graph-app-id', silent=True)
-# 		authority_url = 'https://login.microsoftonline.com/consumers'
-#
-# 		app = PublicClientApplication(app_id, authority=authority_url)
-#
-# 		flow = app.initiate_device_flow(scopes=list(A.pull('graph-scopes', [])))
-#
-# 		print(flow['message'])
-# 		pyperclip.copy(flow['user_code'])
-# 		webbrowser.open(flow['verification_uri'])
-#
-# 		input('(code copied!) Press enter to continue...')
-#
-# 		result = app.acquire_token_by_device_flow(flow)
-# 		access_token_id = result['access_token']
-# 		_onedrive = {'Authorization': f'Bearer {access_token_id}'}
-# 		print('Success!')
-#
-# 	return _onedrive
-
