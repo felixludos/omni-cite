@@ -14,7 +14,9 @@ class ZoteroProcess(fig.Configurable):
 	def __init__(self, A, **kwargs):
 		super().__init__(A, **kwargs)
 		self.zot = self._load_zotero(A)
-		exclusion_tags = A.pull('exclusion-tags', None)
+		self.brand_tag = A.pull('brand-tag', None)
+		self.ignore_brand_tag = A.pull('ignore-brand', False)
+		exclusion_tags = A.pull('exclusion-tags', [])
 		if exclusion_tags is not None:
 			if isinstance(exclusion_tags, str):
 				exclusion_tags = exclusion_tags.split(' AND ')
@@ -26,23 +28,31 @@ class ZoteroProcess(fig.Configurable):
 	
 	@classmethod
 	def _load_zotero(cls, A):
-		global _zotero_obj
-		if _zotero_obj is None:
-			_zotero_obj = zotero.Zotero(A.pull('zotero-library', silent=True), A.pull('zotero-library-type', silent=True),
+		if cls._zotero_obj is None:
+			cls._zotero_obj = zotero.Zotero(A.pull('zotero-library', silent=True), A.pull('zotero-library-type', silent=True),
 			                            A.pull('zotero-api-key', silent=True))
-		return _zotero_obj
+		return cls._zotero_obj
 	
 	_brand_tag_prefix = 'zz:omni-cite:'
 	
-	def update_items(self, items, brand_tag=None, **kwargs):
+	def brand_items(self, brand_tag, items):
+		brand = f'{self._brand_tag_prefix}{brand_tag}'
+		for item in items:
+			if brand not in {tag['tag'] for tag in item.get('data', item)['tags']}:
+				item.get('data', item)['tags'].append({'tag': brand_tag, 'type': 1})
+	
+	def update_items(self, items, use_brand_tag=True, brand_tag=None, **kwargs):
+		if use_brand_tag and brand_tag is None:
+			brand_tag = self.brand_tag
 		if brand_tag is not None:
-			brand_tag = f'{self._brand_tag_prefix}{brand_tag}'
-			for item in items:
-				if brand_tag not in {tag['tag'] for tag in item['data']['tags']}:  # add missing branding
-					item['data']['tags'].append({'tag': brand_tag, 'type': 1})
+			self.brand_items(brand_tag, items)
 		return self.zot.update_items(items, **kwargs)
 	
-	def create_items(self, items, **kwargs):
+	def create_items(self, items, use_brand_tag=True, brand_tag=None, **kwargs):
+		if use_brand_tag and brand_tag is None:
+			brand_tag = self.brand_tag
+		if brand_tag is not None:
+			self.brand_items(brand_tag, items)
 		return self.zot.create_items(items, **kwargs)
 	
 	def top(self, brand_tag=None, **kwargs):
@@ -55,20 +65,25 @@ class ZoteroProcess(fig.Configurable):
 	def children(self, itemID, **kwargs):
 		return self.zot.children(itemID, **kwargs)
 	
-	def collect(self, q=None, top=False, brand_tag=None, get_all=True, itemType=None, tags=None, **kwargs):
+	def collect(self, q=None, top=False, brand_tag=None, ignore_brand=None,
+	            get_all=True, itemType=None, tag=None, **kwargs):
+		if brand_tag is None:
+			brand_tag = self.brand_tag
 		if len(self.exclusion_tags) or brand_tag is not None:
-			if tags is None:
-				tags = self.exclusion_tags
-			elif isinstance(tags, str):
-				tags = [tags, *self.exclusion_tags]
+			if tag is None:
+				tag = self.exclusion_tags
+			elif isinstance(tag, str):
+				tag = [tag, *self.exclusion_tags]
 			else:
-				tags = [*tags, *self.exclusion_tags]
-			if brand_tag is not None:
-				tags = [*tags, f'-{self._brand_tag_prefix}{brand_tag}']
+				tag = [*tag, *self.exclusion_tags]
+			if ignore_brand is None:
+				ignore_brand = self.ignore_brand_tag
+			if brand_tag is not None and not ignore_brand:
+				tag = [*tag, f'-{self._brand_tag_prefix}{brand_tag}']
 		
 		# TODO: handle pagination
 		
-		return (self.zot.top if top else self.zot.items)(q=q, itemType=itemType, tags=tags, **kwargs)
+		return (self.zot.top if top else self.zot.items)(q=q, itemType=itemType, tag=tag, **kwargs)
 
 
 
@@ -82,12 +97,13 @@ class OneDriveProcess(fig.Configurable):
 		
 		self.app_id = A.pull('graph-app-id', silent=True)
 		if self._onedrive_app is None:
-			self._onedrive_app = PublicClientApplication(self.app_id, authority=self._authority_url)
+			self.__class__._onedrive_app = PublicClientApplication(self.app_id, authority=self._authority_url)
+		
+		if self._onedrive_header is None:
+			self.__class__._onedrive_header = A.pull('_header', None, silent=True)
 		
 		self.scopes = list(A.pull('graph-scopes', []))
 		
-		if self._onedrive_flow is None:
-			self._onedrive_flow = self._onedrive_app.initiate_device_flow(scopes=self.scopes)
 		
 	_authority_url = 'https://login.microsoftonline.com/consumers'
 	
@@ -95,20 +111,23 @@ class OneDriveProcess(fig.Configurable):
 	_onedrive_flow = None
 	_onedrive_header = None
 	
-	def authorize(self):
+	def authorize(self): # TODO: setup (auto) refresh tokens
 		if self._onedrive_header is None:
-			print(self._onedrive_flow['message'])
+			self._onedrive_flow = self._onedrive_app.initiate_device_flow(scopes=self.scopes)
+			print('OneDrive:', self._onedrive_flow['message'])
 			if self.auto_copy:
 				pyperclip.copy(self._onedrive_flow['user_code'])
+				print('(code copied to clipboard!) Waiting for you to complete the sign in...')
+			
 			if self.auto_open_browser:
 				webbrowser.open(self._onedrive_flow['verification_uri'])
 			
-			input('(code copied!) Press enter to continue...')
+			# input('(code copied!) Press enter to continue...')
 			
 			result = self._onedrive_app.acquire_token_by_device_flow(self._onedrive_flow)
 			access_token_id = result['access_token']
-			self._onedrive_header = {'Authorization': f'Bearer {access_token_id}'}
-			print('Success!')
+			self.__class__._onedrive_header = {'Authorization': f'Bearer {access_token_id}'}
+		print('OneDrive Authorization Success!')
 		# return self._onedrive_header
 	
 	def is_expired(self):
@@ -116,37 +135,90 @@ class OneDriveProcess(fig.Configurable):
 	
 	endpoint = 'https://graph.microsoft.com/v1.0/me'
 	
+	def send_request(self, send_fn, retry=1):
+		
+		if self.is_expired():
+			self.authorize()
+		
+		response = send_fn(self._onedrive_header)
+		out = response.json()
+		
+		if 'error' in out and retry > 0:
+			if out['error']['code'] == 'InvalidAuthenticationToken':
+				print('Token Expired, re-authorizing now.')
+				self.__class__._onedrive_header = None
+				return self.send_request(send_fn, retry-1)
+		return out
+		
+	
 	def list_dir(self, path):
 		if self.is_expired():
 			self.authorize()
 		
-		# response = get_url(endpoint + f'/drive/root:/{str(connection)}/:/children', headers=_header)
-		response = requests.get(self.endpoint + f'/drive/root:/{str(path)}/:/children', headers=self._onedrive_header)
-		out = response.json()
+		out = self.send_request(lambda header:
+		                        requests.get(self.endpoint + f'/drive/root:/{str(path)}/:/children',
+		                                             headers=header))
 		return out['value']
-		# file_id_table = {item['name']: item['id'] for item in out['value']}
+		
+		
+	def get_meta(self, paths):
+		reqs = [self.generate_request(f'/me/drive/root:/{path}') for path in paths]
+		out = self.batch_send(reqs)
+		return out
 	
-	@classmethod
-	def share_links(cls, file_ids, mode='view'):
-		def generate_request(url, method='GET', **kwargs):
-			return {'method': method.upper(), 'url': url, **kwargs}
-			
-		permissions = {"type": {'download': 'embed'}.get(mode, mode), "scope": "anonymous"}
-		reqs = [generate_request(f'/me/drive/items/{item_id}/createLink', method='POST',
-		                         body=permissions,
-		                         headers={'content-type': 'application/json'})
-		        for item_id in file_ids]
+	
+	def share_files(self, paths, mode='view'):
+		reqs = [self.generate_request(f'/me/drive/root:/{path}:/createLink',
+		                                  method='POST', headers={'content-type': 'application/json'},
+		                                  body={"type": {'download': 'embed'}.get(mode, mode),
+		                                        "scope": "anonymous"},)
+		            for path in paths]
+		
+		out = self.batch_send(reqs)
+		
+		if mode == 'download' and isinstance(out, list):
+			for r in out:
+				link = r.get('body', {}).get('link', {})
+				if 'webUrl' in link:
+					link['webUrl'] = link['webUrl'].replace('embed', 'download')
+		return out
+	
+	
+	@staticmethod
+	def generate_request(url, method='GET', **kwargs):
+		return {'method': method.upper(), 'url': url, **kwargs}
+	
+	
+	def batch_send(self, reqs):
 		for i, req in enumerate(reqs):
 			req['id'] = str(i + 1)
-		
-		body = {'requests': reqs}
-		
-		resp = requests.post('https://graph.microsoft.com/v1.0/$batch', json=body,
-		                     headers={'content-type': 'application/json', **cls._onedrive_header})
-		out = resp.json()
-		links = [r['body']['link']['webUrl'] for r in sorted(out['responses'], key=lambda r: r['id'])]
-		return links
+		out = self.send_request(lambda header:
+		                         requests.post('https://graph.microsoft.com/v1.0/$batch',
+		                                       json={'requests': reqs},
+		                                       headers={'content-type': 'application/json', **header}))
+		if 'responses' not in out:
+			return out
+		return sorted(out['responses'], key=lambda r: r['id'])
 	
+	# def share_links(self, file_ids, mode='view'):
+	# 	if self.is_expired():
+	# 		self.authorize()
+	#
+	# 	permissions = {"type": {'download': 'embed'}.get(mode, mode), "scope": "anonymous"}
+	# 	reqs = [self.generate_request(f'/me/drive/items/{item_id}/createLink', method='POST',
+	# 	                         body=permissions,
+	# 	                         headers={'content-type': 'application/json'})
+	# 	        for item_id in file_ids]
+	# 	for i, req in enumerate(reqs):
+	# 		req['id'] = str(i + 1)
+	#
+	# 	body = {'requests': reqs}
+	#
+	# 	out = self.send_request(lambda header:
+	# 	                        requests.post('https://graph.microsoft.com/v1.0/$batch', json=body,
+	# 	                     headers={'content-type': 'application/json', **header}))
+	# 	links = [r['body']['link']['webUrl'] for r in sorted(out['responses'], key=lambda r: r['id'])]
+	# 	return links
 
 # _onedrive = None
 # def get_onedrive(A):

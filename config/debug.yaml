@@ -3,11 +3,15 @@
 #_meta.script_name: process-pdfs
 #_meta.script_name: extract-features
 #_meta.script_name: share-pdfs
-_meta.script_name: embed-images
+#_meta.script_name: embed-images
+
+_meta.script_name: onedrive-links
 
 parents: [secrets]
 
-#dry-run: yes
+dry-run: yes
+
+#source-name: pdf
 
 remove-imported: yes
 

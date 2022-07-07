@@ -17,7 +17,7 @@ import PyPDF2
 from fuzzywuzzy import fuzz
 
 from .processing import get_now
-from .util import create_file, create_url, create_note, print_new_errors
+from .util import create_file, create_url, create_note
 
 def convert_imported(parent, child, storage_root, cloud_root, dry_run):
 	

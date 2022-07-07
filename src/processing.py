@@ -1,3 +1,5 @@
+import sys, os, shutil
+from pathlib import Path
 import omnifig as fig
 from tqdm import tqdm
 from datetime import datetime, timezone
@@ -8,24 +10,13 @@ import urllib.parse
 import requests
 from fuzzywuzzy import fuzz
 
-from .util import print_new_errors, create_url
-from .auth import get_zotero
-
-
-def get_now():
-	return datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat()
-	# return datetime.now(tz=timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-
-
+from .util import create_url, get_now, Script_Manager, split_by_filter
+from .auth import ZoteroProcess
 
 
 
 @fig.Component('default-url')
 class Default_URL_Maker(fig.Configurable):
-	def __init__(self, A, **kwargs):
-		super().__init__(A, **kwargs)
-		
-		
 	def create_url(self, item):
 		data = item['data']
 		
@@ -41,72 +32,60 @@ class Default_URL_Maker(fig.Configurable):
 
 @fig.Script('fill-in-urls')
 def fill_in_urls(A):
-	dry_run = A.pull('dry-run', False)
-	silent = A.pull('silent', False)
-	
-	brand_tag = A.pull('brand-tag', 'url')
-	ignore_brand_tag = A.pull('ignore-brand', False)
-	brand_errors = A.pull('brand-errors', False)
+	A.push('manager._type', 'script-manager', overwrite=False, silent=True)
+	A.push('manager.pbar-desc', 'Filling in URLs', overwrite=False, silent=True)
+	manager: Script_Manager = A.pull('manager')
 	
 	update_existing = A.pull('update-existing', False)
 	
-	marked = []
-	new = []
-	def add_new(item, msg):
-		marked.append(item)
-		new.append([item, msg])
-	errors = []
-	def add_error(item, msg):
-		if brand_errors:
-			marked.append(item)
-		errors.append([item, msg])
-	
 	A.push('url-maker._type', 'default-url', overwrite=False, silent=True)
-	url_maker = A.pull('url-maker')
-	
+	url_maker: Default_URL_Maker = A.pull('url-maker')
 
+	A.push('brand-tag', 'url', overwrite=False, silent=True)
 	A.push('zotero._type', 'zotero', overwrite=False, silent=True)
-	zot = A.pull('zotero')
-	itr = tqdm(zot.top(brand_tag=brand_tag if ignore_brand_tag else None))
+	zot: ZoteroProcess = A.pull('zotero')
+
+	brand_errors = A.pull('brand-errors', False)
 	
-	for item in itr:
-		data = item['data']
-		current = data['url']
-		itr.set_description('Filling in URLs {}'.format(data['key']))
+	manager.preamble()
+	
+	todo = zot.top()
+	manager.log(f'Found {len(todo)} new items to process.')
+	
+	changed_items = []
+	
+	for item in manager.iterate(todo):
+		current = item['data']['url']
 		if current == '' or update_existing:
 			try:
 				url = url_maker.create_url(item)
 			except Exception as e:
-				add_error(item, f'{type(e)}: {str(e)}')
+				manager.add_error(item, f'{type(e)}: {str(e)}')
+				if brand_errors:
+					changed_items.append(item)
 			else:
 				msg = f'Unchanged: {current}'
 				if url is not None and url != current:
-					data['url'] = url
+					item['data']['url'] = url
 					msg = f'{repr(current)} -> {repr(url)}'
-				add_new(item, msg)
-				# marked.append(item)
+				manager.add_new(item, msg)
+				changed_items.append(item)
 	
-	if not dry_run:
-		zot.update_items(marked, brand_tag=brand_tag)
+	if manager.is_real_run:
+		zot.update_items(changed_items)
 	
-	if not silent:
-		print_new_errors(new, errors)
-	return new, errors
+	manager.finish()
+	return manager
 
-
-
-# def find_urls(string):
-# 	regex = r"(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'\".,<>?«»“”‘’]))"
-# 	url = re.findall(regex, string)
-# 	return [x[0] for x in url]
 
 
 @fig.Component('semantic-scholar-matcher')
-class SemanticScholarMatcher(fig.Configurable):
+class Semantic_Scholar_Matcher(fig.Configurable):
 	def __int__(self, A, **kwargs):
 		super().__init__(A, **kwargs)
 		self.match_ratio = A.pull('match-ratio', 92)
-		self.base_url = 'http://api.semanticscholar.org/graph/v1/paper/search?query={}'
+		
+	query_url = 'http://api.semanticscholar.org/graph/v1/paper/search?query={}'
 	
 	
 	def title_to_query(self, title):
@@ -127,7 +106,7 @@ class SemanticScholarMatcher(fig.Configurable):
 	def find(self, item, dry_run=False):
 		title = item['data']['title']
 		clean = self.title_to_query(title)
-		url = self.base_url.format(clean)
+		url = self.query_url.format(clean)
 		
 		if dry_run:
 			return url
@@ -138,167 +117,110 @@ class SemanticScholarMatcher(fig.Configurable):
 			if fuzz.ratio(res.get('title', ''), title) >= self.match_ratio:
 				return self.format_result(res.get('paperId', ''))
 		return ''
-	
+
 	
 
 @fig.Script('link-semantic-scholar')
 def link_semantic_scholar(A):
-	dry_run = A.pull('dry-run', False)
-	silent = A.pull('silent', False)
-	
-	brand_tag = A.pull('brand-tag', 'sscholar')
-	ignore_brand_tag = A.pull('ignore-brand', False)
-	brand_errors = A.pull('brand-errors', False)
-	
-	update_existing = A.pull('update-existing', False)
+	A.push('manager._type', 'script-manager', overwrite=False, silent=True)
+	A.push('manager.pbar-desc', 'Linking Semantic Scholar', overwrite=False, silent=True)
+	manager: Script_Manager = A.pull('manager')
 	
 	paper_types = A.pull('paper-types', ['conferencePaper', 'journalArticle', 'preprint'])
 	if paper_types is not None and not isinstance(paper_types, str):
 		paper_types = ' || '.join(paper_types)
 	
-	marked = []
-	new = []
-	def add_new(item, msg):
-		marked.append(item)
-		new.append([item, msg])
-	errors = []
-	def add_error(item, msg):
-		if brand_errors:
-			marked.append(item)
-		errors.append([item, msg])
-	
 	A.push('semantic-scholar-matcher._type', 'semantic-scholar-matcher', overwrite=False, silent=True)
-	matcher = A.pull('semantic-scholar-matcher')
+	matcher: Semantic_Scholar_Matcher = A.pull('semantic-scholar-matcher')
 
+	A.push('brand-tag', 'semantic-scholar', overwrite=False, silent=True)
 	A.push('zotero._type', 'zotero', overwrite=False, silent=True)
-	zot = A.pull('zotero')
-	itr = tqdm(zot.top(itemType=paper_types, brand_tag=brand_tag if ignore_brand_tag else None))
+	zot: ZoteroProcess = A.pull('zotero')
 	
-	attachment_name = 'Semantic Scholar'
+	brand_errors = A.pull('brand-errors', False)
 	
-	updates = []
-	ss = []
+	attachment_name = A.pull('semantic-scholar-name', 'Semantic Scholar')
 	
-	for item in itr:
-		data = item['data']
-		itr.set_description('Linking Semantic Scholar {}'.format(data['key']))
+	manager.preamble()
+	
+	timestamp = get_now()
+	
+	todo = zot.top(itemType=paper_types)
+	manager.log(f'Found {len(todo)} new items to process.')
+	
+	new_items = []
+	updated_items = []
+	
+	for item in manager.iterate(todo):
+		url = matcher.find(item, dry_run=manager.dry_run)
 		
-		existing = zot.children(data['key'], q=attachment_name, itemType='attachment')
-		
-		if len(existing) > 1:
-			add_error(item, f'Multiple {repr(attachment_name)} attachments')
-		elif len(existing) == 0 or update_existing or not len(existing[0]['data']['url']):
-			ssurl = matcher.find(item)
-		
-			if len(existing) == 1:
-				old = existing[0]['data']['url']
-				existing[0]['data']['url'] = ssurl
-				add_new(item, f'{repr(old)} -> {repr(ssurl)}')
-				updates.append(existing[0])
-			else:
-				add_new(item, ssurl)
-				ss.append(create_url(attachment_name, ssurl, parentItem=data['key']))
+		if url is not None and len(url):
+			new = create_url(attachment_name, url, parentItem=item['data']['key'], accessDate=timestamp)
+			new_items.append(new)
+			updated_items.append(item)
+			manager.add_change(item, url)
 		else:
-			old = existing[0]['data']['url']
-			add_new(item, f'Unchanged: {old}')
-			
-	if not dry_run:
-		if len(marked):
-			zot.update_items(marked, brand_tag=brand_tag)
-		if len(updates):
-			zot.update_items(updates)
-		if len(ss):
-			zot.create_items(ss)
-	
-	if not silent:
-		print_new_errors(new, errors)
-	return new, errors
-
-
-
-# @fig.Script('process-papers')
-def process_papers(A):
-	dry_run = A.pull('dry-run', False)
-	silent = A.pull('silent', False)
-	
-	match_ratio = A.pull('match-ratio', 92)
-	update_existing = A.pull('update-existing', False)
-	
-	paper_types = A.pull('paper-types', ['conferencePaper', 'journalArticle', 'preprint'])
-	paper_types = set(paper_types)
-	
-	zot = get_zotero(A)
-	itr = tqdm(zot.top())
-	
-	new = []
-	errors = []
-	
-	base = 'http://api.semanticscholar.org/graph/v1/paper/search?query={}'
-	
-	for item in itr:
-		data = item['data']
-		itr.set_description('Processing papers {}'.format(data['key']))
-		if data['itemType'] not in paper_types:
-			errors.append([data['key'], data['itemType'], data['title'], 'Bad item type'])
-		elif update_existing or not any(line.startswith('SemanticScholar ID: ')
-		                                for line in data.get('extra', '').split('\n')):
-			query = clean_up_url(data['title'])
-			url = base.format(query)
-			
-			if dry_run:
-				out = url
-			else:
-				try:
-					out = requests.get(url).json()
-					# out = out['data'][0].get('paperId')
-				except Exception as e:
-					errors.append([data['key'], data['itemType'], data['title'], f'{type(e).__name__}: {e}'])
-					out = None
-				else:
-					for res in out.get('data', []):
-						if fuzz.ratio(res.get('title', ''), data['title']) >= match_ratio:
-							out = res.get('paperId', '')
-							break
-					else:
-						out = ''
-			
-			if out is not None:
-				# data['semanticscholar'] = out
-				if len(out):
-					new.append([data['key'], data['itemType'], data['title'], out])
-					
-					extra = data['extra']
-					
-					if len(extra):
-						lines = extra.split('\n')
-						i = None
-						for i, line in enumerate(lines):
-							if line.startswith('SemanticScholar ID: '):
-								old = line.split('SemanticScholar ID: ')[-1]
-								lines[i] = f'SemanticScholar ID: {out}'
-								errors.append(
-									[data['key'], data['itemType'], data['title'], f'replacing {old} with {out}'])
-								break
-						else:
-							lines.append(f'SemanticScholar ID: {out}')
-							new.append([data['key'], data['itemType'], data['title'], out])
-						data['extra'] = '\n'.join(lines)
-					else:
-						data['extra'] = f'SemanticScholar ID: {out}'
-					
-					if not dry_run:
-						zot.update_item(data)
-				else:
-					errors.append([data['key'], data['itemType'], data['title'], out])
-			
-	if not silent:
-		print('New')
-		print(tabulate(new, headers=['Key', 'Type', 'Title', 'SemanticScholar ID']))
+			manager.add_error(item, 'No Semantic Scholar entry found')
+			if brand_errors:
+				updated_items.append(item)
 		
-		print('Errors')
-		print(tabulate(errors, headers=['Key', 'Type', 'Title', 'Error']))
+	if manager.is_real_run:
+		if len(new_items):
+			zot.create_items(new_items)
+		if len(updated_items):
+			zot.update_items(updated_items)
 	
-	return new, errors
+	manager.finish()
+	return manager
+
+
+
+@fig.Script('process-pdfs')
+def process_pdfs(A):
+	A.push('manager._type', 'script-manager', overwrite=False, silent=True)
+	A.push('manager.pbar-desc', 'Processing PDFs', overwrite=False, silent=True)
+	manager: Script_Manager = A.pull('manager')
+
+	remove_imported = A.pull('remove-imported', False)
+	snapshot_to_pdf = A.pull('convert-snapshots', True)
+	
+	zotero_storage = Path(A.pull('zotero-storage', str(Path.home() / 'Zotero/storage')))
+	assert zotero_storage.exists(), f'Missing zotero storage directory: {str(zotero_storage)}'
+	
+	cloud_root = Path(A.pull('zotero-cloud-storage', str(Path.home() / 'OneDrive/Papers/zotero')))
+	if not cloud_root.exists():
+		os.makedirs(str(cloud_root))
+	
+	A.push('brand-tag', 'pdf', overwrite=False, silent=True)
+	A.push('zotero._type', 'zotero', overwrite=False, silent=True)
+	zot: ZoteroProcess = A.pull('zotero')
+	
+	brand_errors = A.pull('brand-errors', False)
+
+	attachment_name = A.pull('pdf-attachment-name', 'PDF')
+	snapshot_name = A.pull('snapshot-name', 'Snapshot')
+
+	manager.preamble()
+
+	new_items = []
+	updated_items = []
+	removed_items = []
+
+	# snapshots = zot.collect(q=snapshot_name, itemType='attachment')
+	# snapshots, unused = split_by_filter(snapshots,
+	#                                     lambda item: item['data']['linkMode'] == 'imported_url'
+	#                                                  and item['data'].get('contentType') == 'text/html')
+	# if zot.brand_tag is not None:
+	# 	updated_items.extend(unused) # skip (and brand)
+	#
+	# snapshots = {item['data']['parentItem']: item for item in snapshots}
+	
+	todo = zot.top()
+	manager.log(f'Found {len(todo)} new items to process.')
+	
+	raise NotImplementedError
+
+	
 
 
 
