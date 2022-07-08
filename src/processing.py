@@ -64,6 +64,8 @@ def fill_in_urls(A):
 	A.push('url-maker._type', 'default-url', overwrite=False, silent=True)
 	url_maker = A.pull('url-maker')
 	
+
+	A.push('zotero._type', 'zotero', overwrite=False, silent=True)
 	zot = A.pull('zotero')
 	itr = tqdm(zot.top(brand_tag=brand_tag if ignore_brand_tag else None))
 	
@@ -167,7 +169,8 @@ def link_semantic_scholar(A):
 	
 	A.push('semantic-scholar-matcher._type', 'semantic-scholar-matcher', overwrite=False, silent=True)
 	matcher = A.pull('semantic-scholar-matcher')
-	
+
+	A.push('zotero._type', 'zotero', overwrite=False, silent=True)
 	zot = A.pull('zotero')
 	itr = tqdm(zot.top(itemType=paper_types, brand_tag=brand_tag if ignore_brand_tag else None))
 	
