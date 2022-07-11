@@ -15,7 +15,7 @@
 #_meta.script_name: extract-attachment-feature
 _meta.script_name: onedrive-links
 
-parents: [secrets]
+parents: [secrets, notion]
 
 #dry-run: yes
 
