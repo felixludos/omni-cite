@@ -47,21 +47,14 @@ def onedrive_sharing(A):
 	A.push('brand-tag', 'onedrive' if share_type is None else f'onedrive-{share_type}', overwrite=False, silent=True)
 	A.push('zotero._type', 'zotero', overwrite=False, silent=True)
 	zot: ZoteroProcess = A.pull('zotero')
-
-	brand_errors = A.pull('brand-errors', False)
 	
 	manager.preamble()
 	
 	timestamp = get_now()
 	
-	new_items = []
-	updated_items = []
-	error_items = []
-	
 	attachments = zot.collect(q=source_name, itemType='attachment')
 	attachments, unused = split_by_filter(attachments, lambda item: item['data']['linkMode'] == 'linked_file')
-	if zot.brand_tag is not None:
-		updated_items.extend(unused) # skip (and brand)
+	manager.add_failed(*unused, 'linkMode != "linked_file"')
 	attachments = [item for item in attachments if item['data']['linkMode'] == 'linked_file']
 	manager.log(f'Found {len(attachments)} new linked file attachments named "{source_name}".')
 	
@@ -72,8 +65,7 @@ def onedrive_sharing(A):
 		try:
 			loc = path.relative_to(onedrive_root)
 		except ValueError:
-			manager.add_error(item, f'Path not in OneDrive: {path}')
-			error_items.append(item)
+			manager.log_error('Invalid Path', f'{path} is not in OneDrive', item)
 		else:
 			paths[loc] = item
 
@@ -93,46 +85,31 @@ def onedrive_sharing(A):
 			for (path, item), resp, link in manager.iterate(zip(paths.items(), resps, links), total=len(links)):
 				if link is None:
 					if 'error' in resp.get('body', {}):
-						err_msg = '{} {}: {}'.format(resp['status'],
-						                             resp['body']['error']['code'],
-						                             resp['body']['error']['message'])
+						etype = f'{resp["status"]} {resp["body"]["error"]["code"]}'
+						emsg = resp["body"]["error"]["message"]
 					else:
-						err_msg = 'Unknown error {}'.format(resp.get('status'))
-					manager.add_error(item, f'{path}\n{err_msg}')
-					error_items.append(item)
+						etype = f'Response {resp["status"]}'
+						emsg = str(resp)
+					manager.log_error(etype, emsg, item)
 		
 				elif attachment_name is None:
 					old = item['data']['url']
 					item['data']['url'] = link
 					item['data']['accessDate'] = timestamp
-					manager.add_change(item, f'{old} -> {link}')
-					updated_items.append(item)
+					manager.add_update(item, f'{old} -> {link}')
 					
 				else:
 					child = create_url(attachment_name, link, accessDate=timestamp,
 					                   parentItem=item['data']['parentItem'])
-					manager.add_change(child, link)
-					new_items.append(child)
-		
-		if len(new_items):
-			zot.create_items(new_items)
-			manager.log(f'Created {len(new_items)} items')
-		
-		to_update = updated_items
-		if brand_errors:
-			to_update.extend(item for item, msg in manager.errors)
-		if len(to_update):
-			zot.update_items(to_update)
-			manager.log(f'Updated {len(to_update)} items')
+					manager.add_new(child, link)
 		
 	else:
 		manager.log(f'Dry Run: OneDrive request to get the {len(paths)} links.')
 		for path, item in paths.items():
-			manager.add_change(item, str(path))
+			manager.log_success('OneDrivePath', str(path), item)
 	
-	manager.finish()
-	return manager
-
+	return manager.finish()
+	
 
 
 

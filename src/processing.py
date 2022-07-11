@@ -4,13 +4,17 @@ import omnifig as fig
 from tqdm import tqdm
 from datetime import datetime, timezone
 from tabulate import tabulate
+from collections import OrderedDict
 
 import re
-import urllib.parse
+import fitz
+from urllib.parse import urlparse, quote
 import requests
+import pdfkit
+import PyPDF2
 from fuzzywuzzy import fuzz
 
-from .util import create_url, get_now, Script_Manager, split_by_filter
+from .util import create_url, create_file, get_now, Script_Manager, split_by_filter
 from .auth import ZoteroProcess
 
 
@@ -44,14 +48,10 @@ def fill_in_urls(A):
 	A.push('zotero._type', 'zotero', overwrite=False, silent=True)
 	zot: ZoteroProcess = A.pull('zotero')
 
-	brand_errors = A.pull('brand-errors', False)
-	
 	manager.preamble()
 	
 	todo = zot.top()
 	manager.log(f'Found {len(todo)} new items to process.')
-	
-	changed_items = []
 	
 	for item in manager.iterate(todo):
 		current = item['data']['url']
@@ -59,23 +59,14 @@ def fill_in_urls(A):
 			try:
 				url = url_maker.create_url(item)
 			except Exception as e:
-				manager.add_error(item, f'{type(e)}: {str(e)}')
-				if brand_errors:
-					changed_items.append(item)
+				manager.log_error(e, item=item)
 			else:
-				msg = f'Unchanged: {current}'
 				if url is not None and url != current:
+					manager.add_update(item, url)
 					item['data']['url'] = url
-					msg = f'{repr(current)} -> {repr(url)}'
-				manager.add_new(item, msg)
-				changed_items.append(item)
 	
-	if manager.is_real_run:
-		zot.update_items(changed_items)
+	return manager.finish()
 	
-	manager.finish()
-	return manager
-
 
 
 @fig.Component('semantic-scholar-matcher')
@@ -90,7 +81,7 @@ class Semantic_Scholar_Matcher(fig.Configurable):
 	def title_to_query(self, title):
 		fixed = re.sub(r'[^a-zA-Z0-9 :-]', '', title)
 		fixed = fixed.replace('-', ' ').replace(' ', '+')
-		return urllib.parse.quote(fixed).replace('%2B', '+')
+		return quote(fixed).replace('%2B', '+')
 		
 	
 	def call_home(self, url):
@@ -136,8 +127,6 @@ def link_semantic_scholar(A):
 	A.push('zotero._type', 'zotero', overwrite=False, silent=True)
 	zot: ZoteroProcess = A.pull('zotero')
 	
-	brand_errors = A.pull('brand-errors', False)
-	
 	attachment_name = A.pull('semantic-scholar-name', 'Semantic Scholar')
 	
 	manager.preamble()
@@ -147,41 +136,325 @@ def link_semantic_scholar(A):
 	todo = zot.top(itemType=paper_types)
 	manager.log(f'Found {len(todo)} new items to process.')
 	
-	new_items = []
-	updated_items = []
-	
 	for item in manager.iterate(todo):
 		url = matcher.find(item, dry_run=manager.dry_run)
 		
 		if url is not None and len(url):
 			new = create_url(attachment_name, url, parentItem=item['data']['key'], accessDate=timestamp)
-			new_items.append(new)
-			updated_items.append(item)
-			manager.add_change(item, url)
+			manager.add_new(new, f'Found {url}')
+			manager.add_update(item, f'Found {url}')
 		else:
-			manager.add_error(item, 'No Semantic Scholar entry found')
-			if brand_errors:
-				updated_items.append(item)
-		
-	if manager.is_real_run:
-		if len(new_items):
-			zot.create_items(new_items)
-		if len(updated_items):
-			zot.update_items(updated_items)
+			manager.log_error('Matching Error', 'No match found', item=item)
 	
-	manager.finish()
-	return manager
+	return manager.finish()
+	
 
 
+@fig.Component('file-processor')
+class File_Processor(fig.Configurable):
+	def __init__(self, A, **kwargs):
+		super().__init__(A, **kwargs)
 
-@fig.Script('process-pdfs')
+		self.attachment_name = A.pull('attachment-name', 'PDF')
+		self.snapshot_name = A.pull('snapshot-name', 'Snapshot')
+		self.snapshot_to_pdf = A.pull('snapshot-to-pdf', True)
+		self.remove_imports = A.pull('remove-imports', False)
+		self.extension = A.pull('extension', 'pdf')
+		self.suffix = A.pull('suffix', '')
+		
+		zotero_storage = Path(A.pull('zotero-storage', str(Path.home() / 'Zotero/storage')))
+		assert zotero_storage.exists(), f'Missing zotero storage directory: {str(zotero_storage)}'
+		self.zotero_storage = zotero_storage
+		
+		cloud_root = Path(A.pull('zotero-cloud-storage', str(Path.home() / 'OneDrive/Papers/zotero')))
+		if not cloud_root.exists():
+			os.makedirs(str(cloud_root))
+		self.cloud_root = cloud_root
+		
+	
+	def generate_file_path(self, item):
+		name = self.gen_file_name(item)
+		path = self.cloud_root / f'{name}{self.suffix}.{self.extension}'
+		return path
+		
+	@staticmethod
+	def force_unique_file_path(self, path):
+		i = 1
+		while path.exists():
+			root, name, ext = path.parent, path.stem, path.suffix
+			path = root / f'{name} ({i}){ext}'
+			i += 1
+		return path
+	
+	
+	def export_as_pdf(self, src, dest):
+		pdfkit.from_file(str(src), str(dest))
+	
+	
+	def find_import_path(self, item):
+		key = item['data']['key']
+		fname = item['data']['filename']
+		src = self.storage_root / key / fname
+		if not src.exists():
+			raise FileNotFoundError(str(src))
+		return src
+		
+	
+	class TooManyEntries(Exception):
+		def __init__(self, children):
+			# found = '\n'.join([' - {}'.format(entry['data']['title']) for entry in children])
+			# super().__init__(found)
+			super().__init__(', '.join([f'{entry.get("data", {}).get("key")}:{entry.get("data", {}).get("title")}'
+			                            for entry in children]))
+			self.children = children
+	
+	
+	class NoEntryFound(Exception):
+		pass
+	
+	
+	def process(self, item, attachments, manager):
+		existing = [entry for entry in attachments
+		            if entry['data'].get('linkMode') == 'linked_file'
+		            and entry['data'].get('contentType') == 'application/pdf']
+		
+		dest = self.generate_file_path(item)
+		
+		if len(existing) > 1:
+			raise self.TooManyEntries(existing)
+		
+		if len(existing) == 1:
+			linked_file = existing[0]
+			old = Path(linked_file['data']['path'])
+			
+			if dest != old:
+				linked_file['data']['path'] = str(dest)
+				linked_file['data']['title'] = self.attachment_name
+				if manager.is_real_run:
+					shutil.move(str(old), str(dest))
+				
+				manager.add_update(linked_file, f'Renamed to {dest}')
+			
+			return
+			
+		imports = [entry for entry in attachments
+		           if entry['data'].get('linkMode') == 'imported_url'
+		           and entry['data'].get('contentType') == 'application/pdf']
+		
+		if len(imports) > 1:
+			raise self.TooManyEntries(imports)
+		
+		if len(imports) == 1:
+			old = self.find_import_path(imports[0])
+			
+			if manager.is_real_run:
+				if self.remove_imports:
+					shutil.move(str(old), str(dest))
+					manager.add_remove(imports[0], f'Removed {old}')
+				else:
+					shutil.copy(str(old), str(dest))
+
+			msg = f'Imported {old}'
+			
+		else:
+			if not self.snapshot_to_pdf:
+				raise self.NoEntryFound()
+				
+			snapshots = [entry for entry in attachments
+			             if entry['data']['title'] == 'Snapshot'
+			             and entry['data'].get('linkMode') == 'imported_url'
+			             and entry['data'].get('contentType') == 'text/html']
+			
+			if len(snapshots) > 1:
+				raise self.TooManyEntries(snapshots)
+			
+			if len(snapshots) == 0:
+				raise self.NoEntryFound()
+			
+			old = self.find_import_path(snapshots[0])
+			
+			if manager.is_real_run:
+				self.export_as_pdf(old, dest)
+			
+			msg = f'Converted {old}'
+			
+		linked_file = create_file(self.attachment_name, dest, parentItem=item['data']['key'],
+		                          contentType='application/pdf')
+		
+		manager.add_new(linked_file, msg)
+		manager.add_update(item, msg)
+		
+	
+	def gen_file_name(self, item):
+		meta = item['meta']
+		
+		title = re.sub('<.*?>', '', item['data']['title']).replace(' - ', ' ')
+		authors = meta.get('creatorSummary', '').replace('.', '').replace(' et al', '+').replace(' and ', '+')
+		year = meta.get('parsedDate', '').split('-')[0]
+		if len(year):
+			year = f' ({year})'
+		
+		if len(authors) and not len(year):
+			prefix = f'{authors} - '
+		else:
+			prefix = f'{authors}{year} '
+		
+		value = f'{prefix}{title}'.replace('  ', ' ')
+		value = re.sub(r'[^\w\s\-_()+]', '', value).strip()
+		return value
+	
+
+
+@fig.Script('process-attachments', description='Converts imported (local) PDFs and/or HTML Snapshots to linked PDFs.')
 def process_pdfs(A):
 	A.push('manager._type', 'script-manager', overwrite=False, silent=True)
-	A.push('manager.pbar-desc', 'Processing PDFs', overwrite=False, silent=True)
+	A.push('manager.pbar-desc', 'Processing Attachments', overwrite=False, silent=True)
 	manager: Script_Manager = A.pull('manager')
 
-	remove_imported = A.pull('remove-imported', False)
-	snapshot_to_pdf = A.pull('convert-snapshots', True)
+	zotero_storage = Path(A.pull('zotero-storage', str(Path.home() / 'Zotero/storage')))
+	assert zotero_storage.exists(), f'Missing zotero storage directory: {str(zotero_storage)}'
+	
+	cloud_root = Path(A.pull('zotero-cloud-storage', str(Path.home() / 'OneDrive/Papers/zotero')))
+	if not cloud_root.exists():
+		os.makedirs(str(cloud_root))
+	
+	A.push('attachment-processor._type', 'file-processor', overwrite=False, silent=True)
+	processor: File_Processor = A.pull('file-processor')
+	
+	A.push('brand-tag', 'attachments', overwrite=False, silent=True)
+	A.push('zotero._type', 'zotero', overwrite=False, silent=True)
+	zot: ZoteroProcess = A.pull('zotero')
+	
+	manager.preamble()
+
+	todo = zot.top()
+	manager.log(f'Found {len(todo)} new items to process.')
+	
+	for item in manager.iterate(todo):
+		attachments = zot.children(item['data']['key'], itemType='attachment')
+		processor.process(item, attachments, manager)
+	
+	return manager.finish()
+
+
+class Feature_Extractor(fig.Configurable):
+	# def __init__(self, A, **kwargs):
+	# 	super().__init__(A, **kwargs)
+	# 	self._feature_name = A.pull('feature-name')
+	
+	@property
+	def feature_name(self):
+		raise NotImplementedError
+		# return self._feature_name
+	
+	def extract(self, item, get_parent, manager):
+		raise NotImplementedError
+	
+	pass
+
+class PDF_Feature(Feature_Extractor):
+	
+	@staticmethod
+	def extract_text(path):
+		pdf = fitz.open(path)
+		full_text = []
+		for n in range(pdf.page_count):
+			full_text.append(pdf.get_page_text(n))
+		return full_text
+	
+	@classmethod
+	def extract_transcript(cls, path):
+		full_text = cls.extract_text(path)
+		transcript = '\n'.join(full_text)
+		return transcript
+
+
+class CodeExtractor(Feature_Extractor):
+	@staticmethod
+	def code_urls_from_path(path):
+		return []
+
+
+@fig.Component('github-extractor')
+class GithubExtractor(CodeExtractor, PDF_Feature):
+	
+	@staticmethod
+	def find_urls(string):
+		regex = r"(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'\".,<>?«»“”‘’]))"
+		url = re.findall(regex, string)
+		return [x[0] for x in url]
+	
+	@staticmethod
+	def extract_pdf_links(path):
+		PDF = PyPDF2.PdfFileReader(str(path))
+		pages = PDF.pages
+		key = '/Annots'
+		uri = '/URI'
+		ank = '/A'
+		
+		urls = []
+		
+		for page in pages:
+			pageSliced = page  # PDF.getPage(page)
+			pageObject = pageSliced.getObject()
+			if key in pageObject.keys():
+				ann = pageObject[key]
+				for a in ann:
+					u = a.getObject()
+					if ank in u and uri in u[ank].keys():
+						#                 print(u[ank][uri])
+						urls.append(u[ank][uri])
+		
+		return urls
+	
+	
+	@classmethod
+	def extract_urls(cls, path):
+		path = Path(path)
+		transcript = cls.extract_transcript(path)
+		
+		urls = cls.extract_pdf_links(path) + cls.find_urls(transcript)
+		urls = [(url if url.startswith('http') else 'http://' + url) for url in urls]
+		return urls
+	
+	
+	@staticmethod
+	def select_code_urls(urls):
+		domains = [urlparse(url).netloc for url in urls]
+		domains = [domain[4:] if domain.startswith('www.') else domain for domain in domains]
+		
+		githubs = [url for url, domain in zip(urls, domains) if domain.lower() == 'github.com']
+		
+		projs = []
+		for gh in githubs:
+			terms = gh.lower().split('#')[0].split('?')[0].split('github.com/')
+			if len(terms) == 2:
+				terms = terms[1].split('/')
+				if len(terms) == 2 and len(terms[0]) and len(terms[1]):
+					projs.append('/'.join(terms))
+		projs = list(OrderedDict.fromkeys(projs))
+		return [f'http://github.com/{proj}' for proj in projs]
+	
+	
+	@classmethod
+	def code_urls_from_path(cls, path):
+		urls = cls.extract_urls(path)
+		return cls.select_code_urls(urls)
+
+
+	def extract(self, item, get_parent, manager):
+		
+		
+		
+		pass
+		
+
+
+@fig.Script('extract-attachment-feature', description='Generates a word cloud and list of key words from given source (linked) PDFs.')
+def generate_wordcloud(A):
+	A.push('manager._type', 'script-manager', overwrite=False, silent=True)
+	A.push('manager.pbar-desc', '--', overwrite=False, silent=True)
+	manager: Script_Manager = A.pull('manager')
 	
 	zotero_storage = Path(A.pull('zotero-storage', str(Path.home() / 'Zotero/storage')))
 	assert zotero_storage.exists(), f'Missing zotero storage directory: {str(zotero_storage)}'
@@ -190,36 +463,64 @@ def process_pdfs(A):
 	if not cloud_root.exists():
 		os.makedirs(str(cloud_root))
 	
-	A.push('brand-tag', 'pdf', overwrite=False, silent=True)
+	# A.push('feature-extractor._type', 'code-processor', overwrite=False, silent=True)
+	extractor: Feature_Extractor = A.pull('feature-processor')
+	
+	if manager.pbar_desc == '--':
+		manager.pbar_desc = f'Extracting {extractor.feature_name}'
+	
+	source_name = A.pull('source-name', 'PDF')
+	source_type = A.pull('source-type', 'attachment')
+	source_kwargs = A.pull('source-kwargs', {})
+	
+	# require_parent = A.pull('require-parent', False)
+	
+	A.push('brand-tag', f'feature:{extractor.feature_name}', overwrite=False, silent=True)
 	A.push('zotero._type', 'zotero', overwrite=False, silent=True)
 	zot: ZoteroProcess = A.pull('zotero')
 	
-	brand_errors = A.pull('brand-errors', False)
-
-	attachment_name = A.pull('pdf-attachment-name', 'PDF')
-	snapshot_name = A.pull('snapshot-name', 'Snapshot')
-
 	manager.preamble()
+	
+	todo = zot.collect(q=source_name, itemType=source_type, **source_kwargs)
+	manager.log(f'Found {len(todo)} new attachments to extract {extractor.feature_name}.')
+	
+	for item in manager.iterate(todo):
+		extractor.extract(item, lambda: zot.item(item['data']['parentItem']), manager)
+	
+	return manager.finish()
 
-	new_items = []
-	updated_items = []
-	removed_items = []
 
-	# snapshots = zot.collect(q=snapshot_name, itemType='attachment')
-	# snapshots, unused = split_by_filter(snapshots,
-	#                                     lambda item: item['data']['linkMode'] == 'imported_url'
-	#                                                  and item['data'].get('contentType') == 'text/html')
-	# if zot.brand_tag is not None:
-	# 	updated_items.extend(unused) # skip (and brand)
-	#
-	# snapshots = {item['data']['parentItem']: item for item in snapshots}
+@fig.Script('generate-wordcloud', description='Generates a word cloud and list of key words from given source (linked) PDFs.')
+def generate_wordcloud(A):
+	A.push('manager._type', 'script-manager', overwrite=False, silent=True)
+	A.push('manager.pbar-desc', 'Processing Attachments', overwrite=False, silent=True)
+	manager: Script_Manager = A.pull('manager')
+	
+	zotero_storage = Path(A.pull('zotero-storage', str(Path.home() / 'Zotero/storage')))
+	assert zotero_storage.exists(), f'Missing zotero storage directory: {str(zotero_storage)}'
+	
+	cloud_root = Path(A.pull('zotero-cloud-storage', str(Path.home() / 'OneDrive/Papers/zotero')))
+	if not cloud_root.exists():
+		os.makedirs(str(cloud_root))
+	
+	A.push('attachment-processor._type', 'file-processor', overwrite=False, silent=True)
+	processor: File_Processor = A.pull('file-processor')
+	
+	A.push('brand-tag', 'attachments', overwrite=False, silent=True)
+	A.push('zotero._type', 'zotero', overwrite=False, silent=True)
+	zot: ZoteroProcess = A.pull('zotero')
+	
+	manager.preamble()
 	
 	todo = zot.top()
 	manager.log(f'Found {len(todo)} new items to process.')
 	
-	raise NotImplementedError
-
+	for item in manager.iterate(todo):
+		attachments = zot.children(item['data']['key'], itemType='attachment')
+		processor.process(item, attachments, manager)
 	
+	return manager.finish()
+
 
 
 
