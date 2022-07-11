@@ -23,7 +23,7 @@ from .util import create_url, get_now, split_by_filter, Script_Manager
 
 @fig.Script('onedrive-links', description='Create OneDrive share links of zotero attachments')
 def onedrive_sharing(A):
-	A.push('manager._type', 'script-manager', overwrite=False, silent=True)
+	A.push('manager._type', 'zotero-manager', overwrite=False, silent=True)
 	A.push('manager.pbar-desc', 'OneDrive Links', overwrite=False, silent=True)
 	manager: Script_Manager = A.pull('manager')
 	
@@ -48,13 +48,13 @@ def onedrive_sharing(A):
 	A.push('zotero._type', 'zotero', overwrite=False, silent=True)
 	zot: ZoteroProcess = A.pull('zotero')
 	
-	manager.preamble()
+	manager.preamble(zot=zot)
 	
 	timestamp = get_now()
 	
 	attachments = zot.collect(q=source_name, itemType='attachment')
 	attachments, unused = split_by_filter(attachments, lambda item: item['data']['linkMode'] == 'linked_file')
-	manager.add_failed(*unused, 'linkMode != "linked_file"')
+	manager.add_failed(*unused, msg='linkMode != "linked_file"')
 	attachments = [item for item in attachments if item['data']['linkMode'] == 'linked_file']
 	manager.log(f'Found {len(attachments)} new linked file attachments named "{source_name}".')
 	
@@ -73,13 +73,13 @@ def onedrive_sharing(A):
 		if len(paths):
 			if share_type is None:
 				resps = auth.get_meta(list(paths.keys()))
-				links = [(r.get('body', {}).get('webUrl') if r.get('status', 0) == 200 else None)
+				links = [(r.get('body', {}).get('webUrl') if r.get('status', 0) in {200, 201} else None)
 				         for r in resps]
 			
 			else:
 				resps = auth.share_files(list(paths.keys()), mode=share_type)
 				links = [(r.get('body', {}).get('link', {}).get('webUrl')
-				          if r.get('status', 0) == 200 else None)
+				          if r.get('status', 0) in {200, 201} else None)
 				         for r in resps]
 			
 			for (path, item), resp, link in manager.iterate(zip(paths.items(), resps, links), total=len(links)):
@@ -96,12 +96,12 @@ def onedrive_sharing(A):
 					old = item['data']['url']
 					item['data']['url'] = link
 					item['data']['accessDate'] = timestamp
-					manager.add_update(item, f'{old} -> {link}')
+					manager.add_update(item, msg=f'{old} -> {link}')
 					
 				else:
 					child = create_url(attachment_name, link, accessDate=timestamp,
 					                   parentItem=item['data']['parentItem'])
-					manager.add_new(child, link)
+					manager.add_new(child, msg=link)
 		
 	else:
 		manager.log(f'Dry Run: OneDrive request to get the {len(paths)} links.')

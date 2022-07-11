@@ -6,8 +6,6 @@ import pyperclip
 from msal import PublicClientApplication
 from pyzotero import zotero
 
-# from .auth import get_zotero
-
 
 @fig.Component('zotero')
 class ZoteroProcess(fig.Configurable):
@@ -33,13 +31,13 @@ class ZoteroProcess(fig.Configurable):
 			                            A.pull('zotero-api-key', silent=True))
 		return cls._zotero_obj
 	
-	_brand_tag_prefix = 'zz:omni-cite:'
+	_brand_tag_prefix = 'omnicite:'
 	
 	def brand_items(self, brand_tag, items):
 		brand = f'{self._brand_tag_prefix}{brand_tag}'
 		for item in items:
 			if brand not in {tag['tag'] for tag in item.get('data', item)['tags']}:
-				item.get('data', item)['tags'].append({'tag': brand_tag, 'type': 1})
+				item.get('data', item)['tags'].append({'tag': brand, 'type': 1})
 	
 	def update_items(self, items, use_brand_tag=True, brand_tag=None, **kwargs):
 		if use_brand_tag and brand_tag is None:
@@ -83,7 +81,14 @@ class ZoteroProcess(fig.Configurable):
 		
 		# TODO: handle pagination
 		
-		return (self.zot.top if top else self.zot.items)(q=q, itemType=itemType, tag=tag, **kwargs)
+		if q is not None:
+			kwargs['q'] = q
+		if itemType is not None:
+			kwargs['itemType'] = itemType
+		if tag is not None:
+			kwargs['tag'] = tag
+		
+		return (self.zot.top if top else self.zot.items)(**kwargs)
 
 
 
@@ -197,5 +202,5 @@ class OneDriveProcess(fig.Configurable):
 		                                       headers={'content-type': 'application/json', **header}))
 		if 'responses' not in out:
 			return out
-		return sorted(out['responses'], key=lambda r: r['id'])
+		return sorted(out['responses'], key=lambda r: int(r['id']))
 	

@@ -65,6 +65,10 @@ class GithubExtractor(CodeExtractor, PDF_Feature):
 		if feature_title is None:
 			feature_title = A.pull('feature-title', 'Code Links')
 		super().__init__(A, feature_title=feature_title, **kwargs)
+
+	@property
+	def feature_name(self):
+		return 'github'
 	
 	@staticmethod
 	def find_urls(string):
@@ -132,18 +136,25 @@ class GithubExtractor(CodeExtractor, PDF_Feature):
 	
 	
 	def extract(self, items, get_parent, manager):
-		urls = [url for src in items for url in self.code_urls_from_path(src['data']['path'])]
+		srcs = [src for src in items if 'path' in src['data']]
+		assert len(srcs), 'No sources found'
+		urls = [url for src in srcs for url in self.code_urls_from_path(src['data']['path'])]
 		urls = list(OrderedDict.fromkeys(urls))
 		
-		code = [f'<p><a href="{link}" rel="noopener noreferrer nofollow">{link}</a></p>' for link in urls]
+		if len(urls):
 		
-		lines = [f'<p>{self.feature_title}</p>', *code]
-		note = create_note('\n'.join(lines), parentItem=items[-1]['data']['parentItem'])
+			code = [f'<p><a href="{link}" rel="noopener noreferrer nofollow">{link}</a></p>' for link in urls]
+			
+			lines = [f'<p>{self.feature_title}</p>', *code]
+			note = create_note('\n'.join(lines), parentItem=items[-1]['data']['parentItem'])
+			
+			links = "\n".join(urls)
+			msg = f'{len(urls)} code links (from {len(srcs)} sources)\n{links}'
+			manager.add_new(note, msg=msg)
+			manager.add_update(*items, msg=msg)
+			return note
 		
-		links = "\n".join(urls)
-		manager.add_new(note, f'{len(urls)} code links:\n{links}')
-		manager.add_update(*items)
-		return note
+		manager.add_failed(*items, msg='No code links found')
 
 
 
@@ -185,6 +196,10 @@ class WordcloudMaker(PDF_Feature, fig.Configurable):
 		self.wordcloud_root = wordcloud_root
 		self.timestamp = get_now()
 		
+
+	@property
+	def feature_name(self):
+		return 'wordcloud'
 	
 	gh_stopwords = ["0o", "0s", "3a", "3b", "3d", "6b", "6o", "a", "A", "a1", "a2", "a3", "a4", "ab", "able", "about",
 	                "above", "abst", "ac", "accordance", "according", "accordingly", "across", "act", "actually", "ad",
@@ -298,21 +313,24 @@ class WordcloudMaker(PDF_Feature, fig.Configurable):
 	
 	
 	def extract(self, items, get_parent, manager):
-		paths = [Path(item['data']['path']) for item in items]
+		srcs = [Path(src['data']['path']) for src in items if 'path' in src['data']]
+		assert len(srcs), 'No sources found'
 		
-		dest = self.wordcloud_root / f'{paths[-1].stem}.jpg'
+		dest = self.wordcloud_root / f'{srcs[-1].stem}.jpg'
 		
-		wc = self.generate_from_path(*paths)
+		wc = self.generate_from_path(*srcs)
 		words = sorted(wc.words_.keys(), key=lambda w: wc.words_[w], reverse=True)
 		
 		if manager.is_real_run:
 			wc.to_image().save(str(dest), "JPEG")
 			
 		linked_file = create_file(self.feature_title, str(dest), contentType='image/jpg',
+		                          parentItem=items[-1]['data']['parentItem'],
 		                          note=';'.join(words), accessDate=self.timestamp)
 		
-		manager.add_new(linked_file, f'Top 3: {"; ".join(words[:3])}')
-		manager.add_update(*items)
+		msg = f'Top 3: {"; ".join(words[:3])}...'
+		manager.add_new(linked_file, msg=msg)
+		manager.add_update(*items, msg=msg)
 		return wc
 		
 

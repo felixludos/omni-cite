@@ -5,15 +5,23 @@
 #_meta.script_name: share-pdfs
 #_meta.script_name: embed-images
 
+#_meta.script_name: onedrive-links
+
+######################
+
+#_meta.script_name: fix-items
+#_meta.script_name: link-semantic-scholar
+#_meta.script_name: process-attachments
+#_meta.script_name: extract-attachment-feature
 _meta.script_name: onedrive-links
 
 parents: [secrets]
 
-dry-run: yes
+#dry-run: yes
 
 #source-name: pdf
 
-remove-imported: yes
+remove-imports: yes
 
 update-existing: yes
 
@@ -28,11 +36,16 @@ zotero-cloud: C:\Users\anwan\OneDrive\Papers\zotero
 wordcloud-root: C:\Users\anwan\OneDrive\Papers\wordclouds
 onedrive-root: C:\Users\anwan\OneDrive
 
-wordcloud._type: wordcloud
+#wordcloud._type: wordcloud
 
 
+fixer._type: url-fixer
 
+#feature-processor._type: github-extractor
+feature-processor._type: wordcloud
 
+share-type: download
+source-name: Wordcloud
 
 
 

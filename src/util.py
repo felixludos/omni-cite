@@ -161,13 +161,14 @@ class Script_Manager(fig.Configurable):
 			keys = [item.get('key') for item in out.get('successful', {}).values()]
 			self.log(f'Zotero: Created {len(keys)}/{len(self.new_items)} new items: {", ".join(keys)}')
 			self.out_new = out
+		
+		todo = self.updated_items
+		fmsg = ''
+		if self.zot.brand_tag is not None:
+			todo = todo + self.failed_items
+			fmsg = f' (+{len(self.failed_items)} bad)'
 			
-		if len(self.updated_items):
-			todo = self.updated_items
-			fmsg = ''
-			if self.zot.brand_tag is not None:
-				todo = todo + [self.failed_items]
-				fmsg = f' (+{len(self.failed_items)} bad)'
+		if len(todo):
 			worked = self.zot.update_items(todo)
 			if worked:
 				self.log(f'Zotero: Updated {len(self.updated_items)}{fmsg} items: '
