@@ -14,7 +14,8 @@ import pdfkit
 import PyPDF2
 from fuzzywuzzy import fuzz
 
-from .util import create_url, create_file, get_now, Script_Manager, split_by_filter
+from .util import create_url, create_file, get_now, Script_Manager
+from .features import Feature_Extractor
 from .auth import ZoteroProcess
 
 
@@ -108,7 +109,7 @@ class Semantic_Scholar_Matcher(fig.Configurable):
 				return self.format_result(res.get('paperId', ''))
 		return ''
 
-	
+
 
 @fig.Script('link-semantic-scholar')
 def link_semantic_scholar(A):
@@ -337,121 +338,9 @@ def process_pdfs(A):
 	return manager.finish()
 
 
-class Feature_Extractor(fig.Configurable):
-	# def __init__(self, A, **kwargs):
-	# 	super().__init__(A, **kwargs)
-	# 	self._feature_name = A.pull('feature-name')
-	
-	@property
-	def feature_name(self):
-		raise NotImplementedError
-		# return self._feature_name
-	
-	def extract(self, item, get_parent, manager):
-		raise NotImplementedError
-	
-	pass
-
-class PDF_Feature(Feature_Extractor):
-	
-	@staticmethod
-	def extract_text(path):
-		pdf = fitz.open(path)
-		full_text = []
-		for n in range(pdf.page_count):
-			full_text.append(pdf.get_page_text(n))
-		return full_text
-	
-	@classmethod
-	def extract_transcript(cls, path):
-		full_text = cls.extract_text(path)
-		transcript = '\n'.join(full_text)
-		return transcript
-
-
-class CodeExtractor(Feature_Extractor):
-	@staticmethod
-	def code_urls_from_path(path):
-		return []
-
-
-@fig.Component('github-extractor')
-class GithubExtractor(CodeExtractor, PDF_Feature):
-	
-	@staticmethod
-	def find_urls(string):
-		regex = r"(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'\".,<>?«»“”‘’]))"
-		url = re.findall(regex, string)
-		return [x[0] for x in url]
-	
-	@staticmethod
-	def extract_pdf_links(path):
-		PDF = PyPDF2.PdfFileReader(str(path))
-		pages = PDF.pages
-		key = '/Annots'
-		uri = '/URI'
-		ank = '/A'
-		
-		urls = []
-		
-		for page in pages:
-			pageSliced = page  # PDF.getPage(page)
-			pageObject = pageSliced.getObject()
-			if key in pageObject.keys():
-				ann = pageObject[key]
-				for a in ann:
-					u = a.getObject()
-					if ank in u and uri in u[ank].keys():
-						#                 print(u[ank][uri])
-						urls.append(u[ank][uri])
-		
-		return urls
-	
-	
-	@classmethod
-	def extract_urls(cls, path):
-		path = Path(path)
-		transcript = cls.extract_transcript(path)
-		
-		urls = cls.extract_pdf_links(path) + cls.find_urls(transcript)
-		urls = [(url if url.startswith('http') else 'http://' + url) for url in urls]
-		return urls
-	
-	
-	@staticmethod
-	def select_code_urls(urls):
-		domains = [urlparse(url).netloc for url in urls]
-		domains = [domain[4:] if domain.startswith('www.') else domain for domain in domains]
-		
-		githubs = [url for url, domain in zip(urls, domains) if domain.lower() == 'github.com']
-		
-		projs = []
-		for gh in githubs:
-			terms = gh.lower().split('#')[0].split('?')[0].split('github.com/')
-			if len(terms) == 2:
-				terms = terms[1].split('/')
-				if len(terms) == 2 and len(terms[0]) and len(terms[1]):
-					projs.append('/'.join(terms))
-		projs = list(OrderedDict.fromkeys(projs))
-		return [f'http://github.com/{proj}' for proj in projs]
-	
-	
-	@classmethod
-	def code_urls_from_path(cls, path):
-		urls = cls.extract_urls(path)
-		return cls.select_code_urls(urls)
-
-
-	def extract(self, item, get_parent, manager):
-		
-		
-		
-		pass
-		
-
 
 @fig.Script('extract-attachment-feature', description='Generates a word cloud and list of key words from given source (linked) PDFs.')
-def generate_wordcloud(A):
+def extract_attachment_feature(A):
 	A.push('manager._type', 'script-manager', overwrite=False, silent=True)
 	A.push('manager.pbar-desc', '--', overwrite=False, silent=True)
 	manager: Script_Manager = A.pull('manager')
@@ -482,45 +371,52 @@ def generate_wordcloud(A):
 	manager.preamble()
 	
 	todo = zot.collect(q=source_name, itemType=source_type, **source_kwargs)
+	atts = {}
+	for item in todo:
+		if item['data']['parentItem'] not in atts:
+			atts[item['data']['parentItem']] = []
+		atts[item['data']['parentItem']].append(item)
+	
 	manager.log(f'Found {len(todo)} new attachments to extract {extractor.feature_name}.')
 	
-	for item in manager.iterate(todo):
-		extractor.extract(item, lambda: zot.item(item['data']['parentItem']), manager)
+	for items in manager.iterate(atts.values()):
+		extractor.extract(items, lambda: zot.item(item['data']['parentItem']), manager)
 	
 	return manager.finish()
 
 
-@fig.Script('generate-wordcloud', description='Generates a word cloud and list of key words from given source (linked) PDFs.')
-def generate_wordcloud(A):
-	A.push('manager._type', 'script-manager', overwrite=False, silent=True)
-	A.push('manager.pbar-desc', 'Processing Attachments', overwrite=False, silent=True)
-	manager: Script_Manager = A.pull('manager')
-	
-	zotero_storage = Path(A.pull('zotero-storage', str(Path.home() / 'Zotero/storage')))
-	assert zotero_storage.exists(), f'Missing zotero storage directory: {str(zotero_storage)}'
-	
-	cloud_root = Path(A.pull('zotero-cloud-storage', str(Path.home() / 'OneDrive/Papers/zotero')))
-	if not cloud_root.exists():
-		os.makedirs(str(cloud_root))
-	
-	A.push('attachment-processor._type', 'file-processor', overwrite=False, silent=True)
-	processor: File_Processor = A.pull('file-processor')
-	
-	A.push('brand-tag', 'attachments', overwrite=False, silent=True)
-	A.push('zotero._type', 'zotero', overwrite=False, silent=True)
-	zot: ZoteroProcess = A.pull('zotero')
-	
-	manager.preamble()
-	
-	todo = zot.top()
-	manager.log(f'Found {len(todo)} new items to process.')
-	
-	for item in manager.iterate(todo):
-		attachments = zot.children(item['data']['key'], itemType='attachment')
-		processor.process(item, attachments, manager)
-	
-	return manager.finish()
 
+# @fig.Script('generate-wordcloud', description='Generates a word cloud and list of key words from given source (linked) PDFs.')
+# def generate_wordcloud(A):
+# 	A.push('manager._type', 'script-manager', overwrite=False, silent=True)
+# 	A.push('manager.pbar-desc', 'Processing Attachments', overwrite=False, silent=True)
+# 	manager: Script_Manager = A.pull('manager')
+#
+# 	zotero_storage = Path(A.pull('zotero-storage', str(Path.home() / 'Zotero/storage')))
+# 	assert zotero_storage.exists(), f'Missing zotero storage directory: {str(zotero_storage)}'
+#
+# 	cloud_root = Path(A.pull('zotero-cloud-storage', str(Path.home() / 'OneDrive/Papers/zotero')))
+# 	if not cloud_root.exists():
+# 		os.makedirs(str(cloud_root))
+#
+# 	A.push('attachment-processor._type', 'file-processor', overwrite=False, silent=True)
+# 	processor: File_Processor = A.pull('file-processor')
+#
+# 	A.push('brand-tag', 'attachments', overwrite=False, silent=True)
+# 	A.push('zotero._type', 'zotero', overwrite=False, silent=True)
+# 	zot: ZoteroProcess = A.pull('zotero')
+#
+# 	manager.preamble()
+#
+# 	todo = zot.top()
+# 	manager.log(f'Found {len(todo)} new items to process.')
+#
+# 	for item in manager.iterate(todo):
+# 		attachments = zot.children(item['data']['key'], itemType='attachment')
+# 		processor.process(item, attachments, manager)
+#
+# 	return manager.finish()
+#
 
 
 
