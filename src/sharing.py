@@ -87,6 +87,9 @@ def onedrive_sharing(A):
 					if 'error' in resp.get('body', {}):
 						etype = f'{resp["status"]} {resp["body"]["error"]["code"]}'
 						emsg = resp["body"]["error"]["message"]
+						if resp['status'] == 429:
+							sec = int(resp["headers"]["Retry-After"])
+							emsg += f' (retry in {sec//60}:{str(sec%60).zfill(2)} min)'
 					else:
 						etype = f'Response {resp["status"]}'
 						emsg = str(resp)

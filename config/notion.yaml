@@ -1,0 +1,21 @@
+
+
+include-auto-tags: no
+
+
+aliases:
+  Name: Title
+
+properties:
+  data.title: Title
+
+#  data.tag:
+
+
+attachments:
+  PDF:
+    data.url: File URL
+
+#  Wordcloud:
+#    data.url: !cover
+

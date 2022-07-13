@@ -90,6 +90,8 @@ class ZoteroProcess(fig.Configurable):
 		
 		return (self.zot.top if top else self.zot.items)(**kwargs)
 
+	def all_collections(self, **kwargs):
+		return self.zot.all_collections(**kwargs)
 
 
 @fig.Component('onedrive-auth')
