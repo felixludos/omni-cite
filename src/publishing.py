@@ -76,10 +76,15 @@ class Creators(Extractor):
 class Tags(Extractor):
 	def __init__(self, A, **kwargs):
 		super().__init__(A, **kwargs)
-		self.keep_auto_tags = A.pull('keep-auto-tags', False)
+		self.include_auto_tags = A.pull('include-auto-tags', False)
+		self.include_real_tags = A.pull('include-real-tags', True)
+		assert self.include_auto_tags or self.include_real_tags, 'At least one of include-auto-tags ' \
+		                                                         'or include-real-tags must be True'
 	
 	def __call__(self, item, get_children=None):
-		return [tag['tag'] for tag in item['data']['tags'] if tag.get('type', 0) == 0 or self.keep_auto_tags]
+		return [tag['tag'] for tag in item['data']['tags']
+		        if (self.include_real_tags and tag.get('type', 0) == 0)
+		        or (self.include_auto_tags and tag.get('type', 0) == 1)]
 		tags = []
 		for tag in item['data']['tags']:
 			if tag.get('type', 0) == 0 or self.keep_auto_tags:
@@ -271,17 +276,32 @@ class LinksToRichText(Extractor):
 			terms.append(self._new_line_obj())
 		terms.pop()
 		return {'type': 'rich_text', 'rich_text': terms}
-	
 
 
+@fig.AutoModifier('to-rich-text')
+class ToRichText(Extractor):
+	def __call__(self, item, get_children=None):
+		
+		text = super().__call__(item, get_children)
+		
+		if text is None or len(text) == 0:
+			return
+		
+		text = str(text)
+		return {'rich_text': [{'type': 'text', 'text': {'content': text}}]}
+		# return {'type': 'rich_text', 'rich_text': [{'type': 'text', 'text': {'content': text}, 'plain_text': text}]}
+		
+
+@fig.Component('notion-publisher')
 class Publisher(fig.Configurable):
 	def __init__(self, A, **kwargs):
 		super().__init__(A, **kwargs)
 		self.notion_link_attachment = A.pull('notion-link-attachment', 'Notion')
 		self.notion_database_id = A.pull('notion-database-id')
+		self.notion_parent = {'database_id': self.notion_database_id, 'type': 'database_id'}
 		self._notion_header = {
-			'Content-Type': 'application/json',
-			'Accept': 'application/json',
+			# 'Content-Type': 'application/json',
+			# 'Accept': 'application/json',
 			'Notion-Version': A.pull('notion-version', '2022-06-28'),
 			'Authorization': f'Bearer {A.pull("notion-secret", silent=True)}',
 		}
@@ -315,8 +335,9 @@ class Publisher(fig.Configurable):
 			payload['cover'] = {'type': 'external', 'external': {'url': cover}}
 		
 		if pageID is None:
+			# payload['parent'] = self.notion_database_id
+			payload['parent'] = self.notion_parent
 			return self.send_request('POST', 'https://api.notion.com/v1/pages', data=payload)
-		payload['parent'] = self.notion_database_id
 		return self.send_request('PATCH', f'https://api.notion.com/v1/pages/{pageID}', data=payload)
 
 
