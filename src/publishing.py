@@ -50,6 +50,7 @@ class Creators(Extractor):
 				names.append(creator['firstName'])
 			else:
 				raise self.ExtractionError(f'No name found for creator {creator}')
+
 		return '\n'.join(names)
 
 
@@ -106,7 +107,6 @@ class Arxiv(Extractor):
 #
 # 	def __call__(self, item, get_children=None):
 # 		children = get_children()
-
 
 
 
