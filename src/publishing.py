@@ -243,6 +243,23 @@ class SemanticScholar(AttachmentExtractor):
 		return ss['data']['url']
 
 
+@fig.Component('extractor/google-scholar')
+class GoogleScholar(AttachmentExtractor):
+	def __init__(self, A, allow_multiple=False, **kwargs):
+		super().__init__(A, allow_multiple=allow_multiple, **kwargs)
+	
+	def select(self, children):
+		return [child for child in children if child['data'].get('title') == 'Google Scholar'
+		        and child['data'].get('itemType') == 'attachment'
+		        and child['data'].get('linkMode') == 'linked_url']
+	
+	def __call__(self, item, get_children=None):
+		attachment = super().__call__(item, get_children)
+		if attachment is None:
+			return
+		return attachment['data']['url']
+
+
 @fig.Component('extractor/code-links')
 class CodeLinks(AttachmentExtractor):
 	def __init__(self, A, allow_multiple=False, **kwargs):

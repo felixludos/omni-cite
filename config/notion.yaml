@@ -66,6 +66,10 @@ extractors:
     _type: extractor/semantic-scholar
     _mod.to-url: yes
 
+  Google Scholar:
+    _type: extractor/google-scholar
+    _mod.to-url: yes
+
 
   Access Date:
     _type: extractor/accessDate

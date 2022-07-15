@@ -85,12 +85,14 @@ def process(A: fig.ConfigType):
 @fig.Script('sharing', description='Add sharing OneDrive links')
 def sharing(A):
 	silent = A.pull('silent', False, silent=True)
-	silence_scripts = A.pull('silence-scripts', silent)
-	A.silence(silence_scripts)
+	silence_config = A.pull('silence-config', silent, silent=True)
+	silence_scripts = A.pull('silence-scripts', silent, silent=True)
+	A.silence(silence_config)
 
 	file_links = A.pull('file-links', True)
 	if file_links:
 		A.begin()
+		A.push('silent', silence_scripts, silent=True, overwrite=False)
 		A.push('source-name', A.pull('file-source-name', 'PDF'), silent=True)
 		A.push('share-type', A.pull('file-share-type', None, silent=True), silent=True)
 		fig.run('onedrive-links', A)
@@ -136,8 +138,9 @@ def sharing(A):
 @fig.Script('publish', description='Publish zotero attachments on Notion')
 def publish(A):
 	silent = A.pull('silent', False, silent=True)
-	silence_scripts = A.pull('silence-scripts', silent)
-	A.silence(silence_scripts)
+	silence_config = A.pull('silence-config', silent, silent=True)
+	silence_scripts = A.pull('silence-scripts', silent, silent=True)
+	A.silence(silence_config)
 
 	sync_notion = A.pull('sync-notion', True)
 	if sync_notion:
