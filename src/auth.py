@@ -63,7 +63,7 @@ class ZoteroProcess(fig.Configurable):
 	def children(self, itemID, **kwargs):
 		return self.zot.children(itemID, **kwargs)
 	
-	def collect(self, q=None, top=False, brand_tag=None, ignore_brand=None,
+	def collect(self, q=None, top=False, collection=None, brand_tag=None, ignore_brand=None,
 	            get_all=True, itemType=None, tag=None, **kwargs):
 		if brand_tag is None:
 			brand_tag = self.brand_tag
@@ -88,7 +88,17 @@ class ZoteroProcess(fig.Configurable):
 		if tag is not None:
 			kwargs['tag'] = tag
 		
-		return (self.zot.top if top else self.zot.items)(**kwargs)
+		if collection is not None:
+			collect_fn = self.zot.collection_items_top if top else self.zot.collection_items
+			return collect_fn(collection, **kwargs)
+		collect_fn = self.zot.top if top else self.zot.items
+		return collect_fn(**kwargs)
+
+	def find_collection(self, **kwargs):
+		return self.zot.collections(**kwargs)
+
+	def get_collection(self, collectionID, **kwargs):
+		return self.zot.collection(collectionID, **kwargs)
 
 	def all_collections(self, **kwargs):
 		return self.zot.all_collections(**kwargs)

@@ -1,23 +1,110 @@
 
 
-include-auto-tags: no
+#include-auto-tags: no
+
+publisher._type: notion-publisher
+
+cover-extractor:
+  _type: extractor/wordcloud/link
+  _mod.to-url: yes
 
 
-aliases:
-  Name: Title
+extractors:
+  Name:
+    _type: extractor/nickname
+    _mod.to-title: yes
 
-properties:
-  data.title: Title
+  Title:
+    _type: extractor/title
+    _mod.to-rich-text: yes
+
+  Creators:
+    _type: extractor/creators
+    _mod.to-rich-text: yes
+
+  Date:
+    _type: extractor/date
+    _mod.to-date: yes
+    include-time: no
+
+  Abstract:
+    _type: extractor/abstract
+    _mod.to-rich-text: yes
+
+  Tags:
+    _type: extractor/tags
+    _mod.to-multi-select: yes
+
+  Auto Tags:
+    _type: extractor/tags
+    _mod.to-multi-select: yes
+    include-auto-tags: yes
+    include-real-tags: no
+
+  Collections:
+    _type: extractor/collections
+    _mod.to-multi-select: yes
+    path-delimiter: '/'
 
 
+  Code:
+    _type: extractor/code-links
+    _mod.links-to-rich-text: yes
+
+  Zotero:
+    _type: extractor/zotero-link
+    _mod.to-url: yes
+
+  Arxiv:
+    _type: extractor/arxiv
+    _mod.to-url: yes
+
+  URL:
+    _type: extractor/url
+    _mod.to-url: yes
+
+  Semantic Scholar:
+    _type: extractor/semantic-scholar
+    _mod.to-url: yes
 
 
+  Access Date:
+    _type: extractor/accessDate
+    _mod.to-date: yes
+
+  Date Added:
+    _type: extractor/dateAdded
+    _mod.to-date: yes
 
 
-attachments:
+  Source:
+    _type: extractor/libraryCatalog
+    _mod.to-select: yes
+
+  Item Type:
+    _type: extractor/itemType
+    _mod.to-select: yes
+
+
+  DOI:
+    _type: extractor/DOI
+    _mod.to-rich-text: yes
+
+  Zotero Key:
+    _type: extractor/key
+    _mod.to-rich-text: yes
+
+  PDF Name:
+    _type: extractor/pdf/path
+    _mod.to-rich-text: yes
+
   PDF:
-    data.url: File URL
+    _type: extractor/pdf/link
+    _mod.to-url: yes
 
-#  Wordcloud:
-#    data.url: !cover
+  Keywords:
+    _type: extractor/wordcloud/words
+    _mod.to-multi-select: yes
+
+
 

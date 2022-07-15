@@ -115,7 +115,8 @@ class Semantic_Scholar_Matcher(fig.Configurable):
 	
 	
 	def format_result(self, ssid):
-		return f'https://www.semanticscholar.org/paper/{ssid}' if len(ssid) else ssid
+		return f'https://api.semanticscholar.org/{ssid}' if len(ssid) else ssid
+		# return f'https://www.semanticscholar.org/paper/{ssid}' if len(ssid) else ssid
 	
 	
 	def find(self, item, dry_run=False):

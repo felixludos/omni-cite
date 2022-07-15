@@ -13,13 +13,18 @@
 #_meta.script_name: link-semantic-scholar
 #_meta.script_name: process-attachments
 #_meta.script_name: extract-attachment-feature
-_meta.script_name: onedrive-links
+#_meta.script_name: onedrive-links
+_meta.script_name: sync-notion
 
 parents: [secrets, notion]
 
-dry-run: yes
+#dry-run: yes
 
 #source-name: pdf
+
+#collection: media
+
+ignore-brand: yes
 
 remove-imports: yes
 

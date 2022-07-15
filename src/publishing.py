@@ -54,7 +54,7 @@ class Date(Extractor):
 @fig.Component('extractor/zotero-link')
 class ZoteroLink(Extractor):
 	def __call__(self, item, get_children=None):
-		return item['links'].get('self', {}).get('alternate', {}).get('href')
+		return item['links'].get('alternate', {}).get('href')
 
 
 @fig.Component('extractor/creators')
@@ -89,23 +89,36 @@ class Tags(Extractor):
 		return [tag['tag'] for tag in item['data']['tags']
 		        if (self.include_real_tags and tag.get('type', 0) == 0)
 		        or (self.include_auto_tags and tag.get('type', 0) == 1)]
-		tags = []
-		for tag in item['data']['tags']:
-			if tag.get('type', 0) == 0 or self.keep_auto_tags:
-				tags.append(tag['tag'])
-		return tags
+		# tags = []
+		# for tag in item['data']['tags']:
+		# 	if tag.get('type', 0) == 0 or self.keep_auto_tags:
+		# 		tags.append(tag['tag'])
+		# return tags
 
 
 @fig.Component('extractor/collections')
 class Collections(Extractor):
 	def __init__(self, A, **kwargs):
 		super().__init__(A, **kwargs)
+		self._item_key = A.pull('item-key', 'name')
+		self._path_delimiter = A.pull('path-delimiter', None)
 		zot = A.pull('zotero', silent=True)
 		self.raw_collections = zot.all_collections()
 		self.collections = {c['key']: c for c in self.raw_collections}
+		for collection in self.raw_collections:
+			collection['path'] = self._collection_path(collection, self.collections)
+			if self._path_delimiter is not None:
+				collection['data']['path'] = self._path_delimiter.join(collection['path'])
+	
+	def _collection_path(self, collection, collections):
+		if collection['data']['parentCollection'] in collections:
+			return self._collection_path(collections[collection['data']['parentCollection']], collections) \
+			       + [collection['data']['name']]
+		return [collection['data']['name']]
 	
 	def __call__(self, item, get_children=None):
-		return [self.collections[c] for c in item['data']['collections'] if c in self.collections]
+		return [self.collections[c]['data'][self._item_key]
+		        for c in item['data']['collections'] if c in self.collections]
 
 
 @fig.Component('extractor/arxiv')
@@ -138,7 +151,7 @@ class AttachmentExtractor(Extractor):
 	def __call__(self, item, get_children=None):
 		if get_children is None:
 			return
-		children = get_children(item)
+		children = get_children()
 		selected = self.select(children)
 		if self.allow_multiple:
 			return selected
@@ -158,10 +171,10 @@ class PDF(AttachmentExtractor):
 
 @fig.Component('extractor/pdf/path')
 class PDF_Path(PDF):
-	def __init__(self, A, full_path=None, select_single=True, **kwargs):
+	def __init__(self, A, full_path=None, allow_multiple=False, **kwargs):
 		if full_path is None:
 			full_path = A.pull('full-path', False)
-		super().__init__(A, select_single=select_single, **kwargs)
+		super().__init__(A, allow_multiple=allow_multiple, **kwargs)
 		self.full_path = full_path
 	
 	def __call__(self, item, get_children=None):
@@ -174,8 +187,8 @@ class PDF_Path(PDF):
 
 @fig.Component('extractor/pdf/link')
 class PDF_Link(PDF):
-	def __init__(self, A, select_single=True, **kwargs):
-		super().__init__(A, select_single=select_single, **kwargs)
+	def __init__(self, A, allow_multiple=False, **kwargs):
+		super().__init__(A, allow_multiple=allow_multiple, **kwargs)
 	
 	def __call__(self, item, get_children=None):
 		pdf = super().__call__(item, get_children)
@@ -223,15 +236,29 @@ class SemanticScholar(AttachmentExtractor):
 		        and child['data'].get('itemType') == 'attachment'
 		        and child['data'].get('linkMode') == 'linked_url']
 
+	def __call__(self, item, get_children=None):
+		ss = super().__call__(item, get_children)
+		if ss is None:
+			return
+		return ss['data']['url']
+
 
 @fig.Component('extractor/code-links')
-class CodeLinks(Extractor):
+class CodeLinks(AttachmentExtractor):
 	def __init__(self, A, allow_multiple=False, **kwargs):
 		super().__init__(A, allow_multiple=allow_multiple, **kwargs)
 		
 	def select(self, children):
 		return [child for child in children if child['data'].get('itemType') == 'note'
 		        and child['data'].get('note', '').startswith('<p>Code Links')]
+
+	def __call__(self, item, get_children=None):
+		cl = super().__call__(item, get_children)
+		if cl is None:
+			return
+		note = cl['data']['note']
+		lines = note.split('\n')
+		return [line.split('"')[1] for line in lines[1:]]
 
 
 @fig.AutoModifier('links-to-rich-text')
@@ -270,70 +297,76 @@ class LinksToRichText(Extractor):
 		       'rich_text': terms}
 
 
-@fig.AutoModifier('to-title')
-class ToTitle(Extractor):
+class ExtrationPackager(Extractor):
+	def package(self, data):
+		raise NotImplementedError
+	
 	def __call__(self, item, get_children=None):
-		text = super().__call__(item, get_children)
-		if text is None or len(text) == 0:
+		data = super().__call__(item, get_children)
+		if data is None:
 			return
-		return {"title": [{"type": "text", "text": {"content": str(text)}}]}
-
+		return self.package(data)
+	
 
 @fig.AutoModifier('to-rich-text')
-class ToRichText(Extractor):
-	def __call__(self, item, get_children=None):
-		text = super().__call__(item, get_children)
-		
-		if text is None or len(text) == 0:
-			return
-		
-		text = str(text)
-		return {'rich_text': [{'type': 'text', 'text': {'content': text}}]}
-		# return {'type': 'rich_text', 'rich_text': [{'type': 'text', 'text': {'content': text}, 'plain_text': text}]}
+class ToRichText(ExtrationPackager):
+	_rich_text_key = 'rich_text'
+	def package(self, data):
+		data = str(data)
+		if len(data):
+			return {self._rich_text_key: [{'type': 'text', 'text': {'content': data}}]}
+
+
+@fig.AutoModifier('to-title')
+class ToTitle(ToRichText):
+	_rich_text_key = 'title'
 
 
 @fig.AutoModifier('to-multi-select')
-class ToMultiSelect(Extractor):
-	def __call__(self, item, get_children=None):
-		tags = super().__call__(item, get_children)
-		if tags is None or len(tags) == 0:
-			return
-		return {'multi_select': [{'name': tag} for tag in tags]}
+class ToMultiSelect(ExtrationPackager):
+	def package(self, data):
+		tags = [{'name': tag} for tag in data if len(tag)]
+		if len(tags):
+			return {'multi_select': tags}
 
 
 @fig.AutoModifier('to-url')
-class ToURL(Extractor):
-	def __call__(self, item, get_children=None):
-		url = super().__call__(item, get_children)
-		if url is None or len(url) == 0:
-			return
-		return {'url': url}
+class ToURL(ExtrationPackager):
+	def package(self, data):
+		if len(data):
+			return {'url': data}
 
 
 @fig.AutoModifier('to-date')
-class ToDate(Extractor):
-	def __call__(self, item, get_children=None):
-		date = super().__call__(item, get_children) # TODO: handle end dates
-		if date is None or len(date) == 0:
-			return
-		if isinstance(date, (list, tuple)):
-			start, end = date
-			return {'date': {'start': start, 'end': end}}
-		assert isinstance(date, str), f'Date is not a string: {date}'
-		return {'date': {'start': date}}
+class ToDate(ExtrationPackager):
+	def __init__(self, A, include_time=None, **kwargs):
+		if include_time is None:
+			include_time = A.pull('include-time', True)
+		super().__init__(A, **kwargs)
+		self.include_time = include_time
+	
+	def package(self, data):
+		if len(data):
+			if isinstance(data, (list, tuple)):
+				start, end = data
+				if not self.include_time:
+					start = start.split('T')[0]
+					end = end.split('T')[0]
+				return {'date': {'start': start, 'end': end}}
+			assert isinstance(data, str), f'Date is not a string: {data}'
+			if not self.include_time:
+				data = data.split('T')[0]
+			return {'date': {'start': data}}
 
 
 @fig.AutoModifier('to-number')
-class ToNumber(Extractor):
-	def __call__(self, item, get_children=None):
-		number = super().__call__(item, get_children)
-		if number is None or len(number) == 0:
-			return
-		return {'number': number}
+class ToNumber(ExtrationPackager):
+	def package(self, data):
+		return {'number': data}
 
 
 @fig.AutoModifier('to-select')
-class ToSelect(Extractor):
+class ToSelect(ExtrationPackager):
 	def __init__(self, A, select_type=None, **kwargs):
 		if select_type is None:
 			select_type = A.pull('select-type', 'select') # {'select', 'status'}
@@ -341,15 +374,24 @@ class ToSelect(Extractor):
 		assert select_type in {'select', 'status'}, f'Invalid select_type: {select_type}'
 		self.select_type = select_type
 	
-	def __call__(self, item, get_children=None):
-		tag = super().__call__(item, get_children)
-		if tag is None or len(tag) == 0:
-			return
-		return {self.select_type: tag}
+	def package(self, data):
+		if len(data):
+			return {self.select_type: {'name': data}}
+
+
+class Publisher(fig.Configurable):
+	def prepare(self, zot):
+		raise NotImplementedError
+	
+	def process(self, zot, get_children=None, manager=None):
+		raise NotImplementedError
+	
+	def publish(self, zot):
+		raise NotImplementedError
 
 
 @fig.Component('notion-publisher')
-class Publisher(fig.Configurable):
+class NotionPublisher(Publisher):
 	def __init__(self, A, **kwargs):
 		super().__init__(A, **kwargs)
 		self.notion_link_attachment = A.pull('notion-link-attachment', 'Notion')
@@ -365,20 +407,35 @@ class Publisher(fig.Configurable):
 		self.timestamp = get_now()
 		
 		self.extractors: Dict[str,Extractor] = A.pull('extractors', {})
-		assert '!cover' not in self.extractors and '!icon' not in self.extractors, \
-			'!cover and !icon are reserved extractor names, sorry'
+		# assert '!cover' not in self.extractors and '!icon' not in self.extractors, \
+		# 	'!cover and !icon are reserved extractor names, sorry'
 		self.cover_extractor = A.pull('cover-extractor', None)
-		# if cover_extractor is not None:
-		# 	self.extractors['!cover'] = cover_extractor
 		self.icon_extractor = A.pull('icon-extractor', None)
-		# if icon_extractor is not None:
-		# 	self.extractors['!icon'] = icon_extractor
 		self.ignore_failed_extractors = A.pull('ignore-failed-extractors', False)
+		self._filter_extractors = A.pull('filter-extractors', False)
 		
 		self.publish_todo = []
 
 	_on_notion_brand = 'synced-with-notion'
-
+	
+	def prepare(self, zot):
+		
+		if self._filter_extractors:
+			database_url = f"https://api.notion.com/v1/databases/{self.notion_database_id}"
+			
+			db_info = self.send_request('GET', database_url)
+			
+			props = db_info.get('properties')
+			
+			if props is not None:
+				bad = []
+				for key in self.extractors:
+					if key not in props:
+						bad.append(key)
+				for key in bad:
+					del self.extractors[key]
+				if len(bad):
+					print(f'Removed {len(bad)} extractors {", ".join(bad)} because they were not in the database')
 
 	@property
 	def ident(self):
@@ -407,7 +464,6 @@ class Publisher(fig.Configurable):
 			payload['cover'] = {'type': 'external', 'external': cover}
 		
 		if pageID is None:
-			# payload['parent'] = self.notion_database_id
 			payload['parent'] = self.notion_parent
 			return self.send_request('POST', 'https://api.notion.com/v1/pages', data=payload)
 		return self.send_request('PATCH', f'https://api.notion.com/v1/pages/{pageID}', data=payload)
@@ -425,25 +481,22 @@ class Publisher(fig.Configurable):
 			if len(link_items) > 1:
 				raise Exception(f'Found multiple Notion attachments for {item["data"].get("title")}')
 			if len(link_items) == 1:
-				# url = link_items[0]['data']['url']
-				# return url.split('-')[-1]
 				return link_items[0]
 		
 
 	_attachment_name = 'Notion'
 	_attachment_note_title = 'Notion Page Info'
-	def create_notion_attachment(self, item, fingerprint, notion_response, **kwargs):
-		url = notion_response.get('url')
-		if url is not None:
-			link = create_url(self._attachment_name, url=url, accessDate=self.timestamp,
-			                  note=self.notion_attachment_note(fingerprint),
-			                  parentItem=item['key'], **kwargs)
-			return link
+	def create_notion_attachment(self, item, fingerprint, notion_response=None, **kwargs):
+		url = '' if notion_response is None else notion_response.get('url', '')
+		link = create_url(self._attachment_name, url=url, accessDate=self.timestamp,
+		                  note=self.notion_attachment_note(fingerprint),
+		                  parentItem=item['key'], **kwargs)
+		return link
 	
 	
 	def notion_attachment_note(self, fingerprint):
 		timestamp = parser.parse(self.timestamp)
-		timestamp = timestamp.strftime('%-d %b %Y, %H:%M') # '%Y-%m-%d %H:%M:%S'
+		timestamp = timestamp.strftime('%d %b %Y, %H:%M') # '%Y-%m-%d %H:%M:%S'
 		
 		lines = [self._attachment_note_title,
 		         f'Last Synced: {timestamp}',
@@ -458,28 +511,18 @@ class Publisher(fig.Configurable):
 			self.data = data
 
 
-	def process(self, item, get_children, manager):
-		
+	def process(self, item, get_children=None, manager=None):
 		# extract data
 		data, errors = self.extract(item, get_children)
 		for name, error in errors.items():
 			manager.log_error(f'{name}: {type(error).__name__}', str(error), item)
-		# fingerprint = self.fingerprint(props)
-		
-		# icon = props.get('!icon')
-		# if '!icon' in props:
-		# 	del props['!icon']
-		# cover = props.get('!cover')
-		# if '!cover' in props:
-		# 	del props['!cover']
 		
 		# find notion page
 		notion_attachment = self.find_notion_attachment(item, get_children)
 		
-		todo = self.PublishTodo(item, notion_attachment, data)
+		todo = self.PublishTodo(item, data, notion_attachment)
 		self.publish_todo.append(todo)
 		return todo
-		# self.publish_page(pageID, properties=props, icon=icon, cover=cover)
 
 	
 	def fingerprint(self, props):
@@ -537,29 +580,41 @@ class Publisher(fig.Configurable):
 				prev_fingerprint = re.search(r'Fingerprint \(do not change\): (.*)', note)
 			
 				if prev_fingerprint is not None and prev_fingerprint.group(1) == fingerprint:
-					manager.add_failed(todo.item, 'Fingerprints match - no update necessary')
+					manager.add_failed(todo.item, msg='Fingerprints match - no update necessary')
 					return
 				
 			attachment['data']['note'] = self.notion_attachment_note(fingerprint)
-			manager.add_update(attachment, 'Updated Notion attachment')
+			manager.add_update(attachment, msg='Updated Notion attachment')
 		
-		resp = self.publish_page(pageID, **todo.data)
+		if manager.is_real_run:
+			resp = self.publish_page(pageID, **todo.data)
+		else:
+			resp = None
+			verb = 'update' if pageID is not None else 'create'
+			manager.log(f'Would {verb} notion page for {todo.item["data"].get("title")}')
 		
-		if attachment is None:
-			attachment = self.create_notion_attachment(todo.item, fingerprint, resp)
-			manager.add_new(attachment, 'Created Notion attachment')
+		if resp is not None and resp.get('status', 200) != 200:
+			manager.log_error(f'{resp.get("status")}: {resp.get("code")}', resp.get('message'), item=todo.item)
+		else:
+			if attachment is None:
+				attachment = self.create_notion_attachment(todo.item, fingerprint, resp)
+				manager.add_new(attachment, msg='Created Notion attachment')
+			
+			if not any(tag['tag'] == self._on_notion_brand for tag in todo.item['data']['tags']):
+				todo.item['data']['tags'].append({'tag': self._on_notion_brand, 'type': 1})
+				manager.add_update(todo.item, msg=f'Added {self._on_notion_brand} tag')
 		
-		if not any(tag['tag'] == self._on_notion_brand for tag in todo.item['data']['tags']):
-			todo.item['data']['tags'].append({'tag': self._on_notion_brand, 'type': 1})
-			manager.add_update(todo.item, f'Added {self._on_notion_brand} tag')
-		
+			verb = 'Updated' if pageID is not None else 'Created'
+			manager.log(f'{verb} notion page for {todo.item["data"].get("title")}')
 		return resp
 		
 		
 	def publish(self, manager: Script_Manager):
 		for todo in self.publish_todo:
 			self.complete_todo(todo, manager)
-		self.publish_todo.clear()
+		if manager.is_real_run:
+			self.publish_todo.clear()
+
 
 
 @fig.Script('sync-notion', description='Sync Zotero items with Notion database.')
@@ -573,10 +628,20 @@ def sync_notion(A):
 	A.push('brand-tag', f'notion:{publisher.ident}', overwrite=False, silent=True)
 	A.push('zotero._type', 'zotero', overwrite=False, silent=True)
 	zot: ZoteroProcess = A.pull('zotero')
-	
+
 	zot_query = A.pull('zotero-query', {})
 	
+	collection_name = A.pull('collection', None)
+	if collection_name is not None:
+		res = zot.find_collection(q=collection_name)
+		if len(res) == 0:
+			raise Exception(f'Collection {collection_name} not found')
+		elif len(res) > 1:
+			raise Exception(f'Multiple collections found for {collection_name}')
+		zot_query['collection'] = res[0]['key']
+	
 	manager.preamble(zot=zot)
+	publisher.prepare(zot)
 	
 	todo = zot.top(**zot_query)
 	manager.log(f'Found {len(todo)} new items to process.')
@@ -586,17 +651,13 @@ def sync_notion(A):
 		def get_children(**kwargs):
 			return zot.children(item['key'], **kwargs)
 		try:
-			rawinfo = publisher.extract(item, get_children=get_children, manager=manager)
+			publisher.process(item, get_children=get_children, manager=manager)
 		except Exception as e:
 			manager.log_error(e, item=item)
-		else:
-			if rawinfo is None:
-				manager.add_failed(item)
-			else:
-				manager.add_update(item, msg=f'Syncing {len(rawinfo)} items: {", ".join(rawinfo)}')
-	
-	if manager.is_real_run:
-		publisher.publish()
+			raise
+			
+	# if manager.is_real_run:
+	publisher.publish(manager)
 	return manager.finish()
 
 
