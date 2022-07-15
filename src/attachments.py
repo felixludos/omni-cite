@@ -318,13 +318,6 @@ def add_note_attachment(zot, parent_key, note, **data):
 	return zot.create_items([template], parentid=parent_key)
 
 
-# def generate_wordcloud(text, w=800, h=400, max_words=50, min_font_size=10, min_word_length=3,
-# 					   background_color='black', colormap='Pastel2', stopwords=EXPANDED_STOPWORDS, **kwargs):
-# 	wordcloud = WordCloud(width=w, height=h, max_words=max_words, min_font_size=min_font_size,
-# 						  background_color=background_color, colormap=colormap,
-# 					  stopwords=stopwords, min_word_length=min_word_length, **kwargs).generate(text)
-# 	return wordcloud
-
 
 
 
