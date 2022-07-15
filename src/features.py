@@ -16,11 +16,149 @@ import PyPDF2
 from fuzzywuzzy import fuzz
 from wordcloud import WordCloud, STOPWORDS
 
-from .util import create_note, create_file, get_now, Script_Manager
+from .util import create_note, create_file, create_url, get_now, Script_Manager
 
 
+class Item_Feature(fig.Configurable):
+	@property
+	def feature_name(self):
+		raise NotImplementedError
+	
+	def get_zotero_kwargs(self):
+		return {}
+	
+	def extract(self, manager, item, get_children=None):
+		raise NotImplementedError
 
-class Feature_Extractor(fig.Configurable):
+
+class Paper_Feature(Item_Feature):
+	def __init__(self, A, **kwargs):
+		super().__init__(A, **kwargs)
+		paper_types = A.pull('paper-types', ['conferencePaper', 'journalArticle', 'preprint'])
+		if paper_types is not None and not isinstance(paper_types, str):
+			paper_types = ' || '.join(paper_types)
+		self.paper_types = paper_types
+	
+	def get_zotero_kwargs(self):
+		kwargs = super().get_zotero_kwargs()
+		if self.paper_types is not None:
+			kwargs['itemType'] = self.paper_types
+		return kwargs
+
+
+@fig.Component('url-fixer')
+class Default_URL_Fixer(Item_Feature):
+	def __init__(self, A, **kwargs):
+		super().__init__(A, **kwargs)
+		
+		self.update_existing = A.pull('update-existing', False)
+
+	@property
+	def feature_name(self):
+		return 'url'
+	
+	def create_url(self, item):
+		data = item['data']
+		
+		url = None
+		if data['itemType'] == 'film' and data['extra'].startswith('IMDb'):
+			url = 'https://www.imdb.com/title/{}/'.format(data['extra'].split('\n')[0].split('ID: ')[-1])
+		if data['itemType'] == 'book' and len(data.get('ISBN', '')):
+			url = 'https://isbnsearch.org/isbn/{}'.format(data['ISBN'].replace('-', ''))
+		
+		return url
+	
+	def extract(self, manager, item, get_children=None):
+		current = item['data']['url']
+		if current == '' or self.update_existing:
+			url = self.create_url(item)
+			if url is not None and url != current:
+				manager.add_update(item, msg=url)
+				item['data']['url'] = url
+				return url
+		manager.add_failed(item, msg=f'Unchanged: "{current}"')
+
+
+@fig.Component('google-scholar')
+class Google_Scholar(Paper_Feature):
+	def __init__(self, A, **kwargs):
+		super().__init__(A, **kwargs)
+		self.attachment_name = A.pull('attachment-name', 'Google Scholar')
+		self.timestamp = get_now()
+
+	@property
+	def feature_name(self):
+		return 'googlescholar'
+	
+	google_scholar_url_base = 'https://scholar.google.com/scholar?as_q={url_title}'
+	
+	def extract(self, manager, item, get_children=None):
+		title = item['data'].get('title')
+		
+		if title is not None:
+			url = self.google_scholar_url_base.format(url_title=quote(title))
+			new = create_url(self.attachment_name, url, parentItem=item['key'], accessDate=self.timestamp)
+			manager.add_new(new, msg=f'Using {url}')
+			manager.add_update(item, msg=f'Using {url}')
+		else:
+			manager.add_failed(item, msg='No title')
+
+
+@fig.Component('semantic-scholar')
+class Semantic_Scholar(Paper_Feature):
+	def __init__(self, A, **kwargs):
+		super().__init__(A, **kwargs)
+		self.match_ratio = A.pull('match-ratio', 92)
+		self.attachment_name = A.pull('attachment-name', 'Semantic Scholar')
+		self.timestamp = get_now()
+	
+	@property
+	def feature_name(self):
+		return 'semanticscholar'  # TODO: fix brand
+	
+	query_url = 'http://api.semanticscholar.org/graph/v1/paper/search?query={}'
+	
+	def title_to_query(self, title):
+		fixed = re.sub(r'[^a-zA-Z0-9 :-]', '', title)
+		fixed = fixed.replace('-', ' ').replace(' ', '+')
+		return quote(fixed).replace('%2B', '+')
+	
+	def call_home(self, url):
+		out = requests.get(url).json()
+		return out
+	
+	def format_result(self, ssid):
+		return f'https://api.semanticscholar.org/{ssid}' if len(ssid) else ssid
+	
+	# return f'https://www.semanticscholar.org/paper/{ssid}' if len(ssid) else ssid
+	
+	def find(self, item, dry_run=False):
+		title = item['data']['title']
+		clean = self.title_to_query(title)
+		url = self.query_url.format(clean)
+		
+		if dry_run:
+			return url
+		
+		out = self.call_home(url)
+		
+		for res in out.get('data', []):
+			if fuzz.ratio(res.get('title', ''), title) >= self.match_ratio:
+				return self.format_result(res.get('paperId', ''))
+		return ''
+	
+	def extract(self, manager, item, get_children=None):
+		url = self.find(item, dry_run=manager.dry_run)
+		
+		if url is not None and len(url):
+			new = create_url(self.attachment_name, url, parentItem=item['key'], accessDate=self.timestamp)
+			manager.add_new(new, msg=f'Found {url}')
+			manager.add_update(item, msg=f'Found {url}')
+		else:
+			manager.add_failed(item, msg='No match found')
+
+
+class Attachment_Feature(fig.Configurable):
 	def __init__(self, A, feature_title=None, **kwargs):
 		if feature_title is None:
 			feature_title = A.pull('feature-title')
@@ -36,7 +174,7 @@ class Feature_Extractor(fig.Configurable):
 		raise NotImplementedError
 	
 
-class PDF_Feature(Feature_Extractor):
+class PDF_Feature(Attachment_Feature):
 	
 	@staticmethod
 	def extract_text(path):
@@ -53,7 +191,7 @@ class PDF_Feature(Feature_Extractor):
 		return transcript
 
 
-class CodeExtractor(Feature_Extractor):
+class CodeExtractor(Attachment_Feature):
 	@staticmethod
 	def code_urls_from_path(path):
 		return []

@@ -8,7 +8,6 @@ cover-extractor:
   _type: extractor/wordcloud/link
   _mod.to-url: yes
 
-
 extractors:
   Name:
     _type: extractor/nickname
@@ -28,7 +27,7 @@ extractors:
     include-time: no
 
   Abstract:
-    _type: extractor/abstract
+    _type: extractor/abstractNote
     _mod.to-rich-text: yes
 
   Tags:

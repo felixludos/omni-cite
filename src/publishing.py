@@ -26,7 +26,7 @@ class SimpleExtractor(Extractor):
 		return item['data'].get(self._data_key, '')
 
 
-for _property in ['title', 'abstract', 'url', 'dateAdded', 'libraryCatalog',
+for _property in ['title', 'abstractNote', 'url', 'dateAdded', 'libraryCatalog',
                   'accessDate', 'itemType', 'key', 'DOI', 'language']:
 	fig.Component(f'extractor/{_property}')(
 		type(f'{_property.capitalize()}_SimpleExtractor', (SimpleExtractor,), {'_data_key': _property}))
@@ -380,13 +380,17 @@ class ToSelect(ExtrationPackager):
 
 
 class Publisher(fig.Configurable):
+	@property
+	def ident(self):
+		raise NotImplementedError
+	
 	def prepare(self, zot):
 		raise NotImplementedError
 	
-	def process(self, zot, get_children=None, manager=None):
+	def process(self, item, get_children=None, manager=None):
 		raise NotImplementedError
 	
-	def publish(self, zot):
+	def publish(self, manager):
 		raise NotImplementedError
 
 
@@ -605,7 +609,8 @@ class NotionPublisher(Publisher):
 				manager.add_update(todo.item, msg=f'Added {self._on_notion_brand} tag')
 		
 			verb = 'Updated' if pageID is not None else 'Created'
-			manager.log(f'{verb} notion page for {todo.item["data"].get("title")}')
+			if manager.is_real_run:
+				manager.log(f'{verb} notion page for {todo.item["data"].get("title")}')
 		return resp
 		
 		
@@ -617,14 +622,16 @@ class NotionPublisher(Publisher):
 
 
 
-@fig.Script('sync-notion', description='Sync Zotero items with Notion database.')
+@fig.Script('sync-notion', description='Sync Zotero items with a Notion database.')
 def sync_notion(A):
 	A.push('manager._type', 'zotero-manager', overwrite=False, silent=True)
 	A.push('manager.pbar-desc', 'Sync with Notion', overwrite=False, silent=True)
 	manager: Script_Manager = A.pull('manager')
 	
 	publisher: Publisher = A.pull('publisher')
-	
+
+	A.push('update-existing', False, overwrite=False, silent=True)
+	A.push('ignore-brand', '<>update-existing', overwrite=False, silent=True)
 	A.push('brand-tag', f'notion:{publisher.ident}', overwrite=False, silent=True)
 	A.push('zotero._type', 'zotero', overwrite=False, silent=True)
 	zot: ZoteroProcess = A.pull('zotero')
@@ -654,9 +661,8 @@ def sync_notion(A):
 			publisher.process(item, get_children=get_children, manager=manager)
 		except Exception as e:
 			manager.log_error(e, item=item)
-			raise
+			# raise
 			
-	# if manager.is_real_run:
 	publisher.publish(manager)
 	return manager.finish()
 

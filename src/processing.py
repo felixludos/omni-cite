@@ -2,6 +2,7 @@ import sys, os, shutil
 from pathlib import Path
 import omnifig as fig
 from tqdm import tqdm
+from functools import lru_cache
 from datetime import datetime, timezone
 from tabulate import tabulate
 from collections import OrderedDict
@@ -15,165 +16,192 @@ import PyPDF2
 from fuzzywuzzy import fuzz
 
 from .util import create_url, create_file, get_now, Script_Manager
-from .features import Feature_Extractor
+from .features import Attachment_Feature, Item_Feature
 from .auth import ZoteroProcess
 
 
-class Item_Fixer(fig.Configurable):
-	@property
-	def fixer_name(self):
-		raise NotImplementedError
-	
-	def fix(self, item):
-		raise NotImplementedError
+# class Item_Fixer(fig.Configurable):
+# 	@property
+# 	def fixer_name(self):
+# 		raise NotImplementedError
+#
+# 	def fix(self, item):
+# 		raise NotImplementedError
+#
+#
+# @fig.Component('url-fixer')
+# class Default_URL_Fixer(Item_Fixer):
+# 	def __init__(self, A, **kwargs):
+# 		super().__init__(A, **kwargs)
+#
+# 		self.update_existing = A.pull('update-existing', False)
+#
+# 	@property
+# 	def fixer_name(self):
+# 		return 'URL'
+#
+# 	def create_url(self, item):
+# 		data = item['data']
+#
+# 		url = None
+# 		if data['itemType'] == 'film' and data['extra'].startswith('IMDb'):
+# 			url = 'https://www.imdb.com/title/{}/'.format(data['extra'].split('\n')[0].split('ID: ')[-1])
+# 		if data['itemType'] == 'book' and len(data.get('ISBN', '')):
+# 			url = 'https://isbnsearch.org/isbn/{}'.format(data['ISBN'].replace('-', ''))
+#
+# 		return url
+#
+#
+# 	def fix(self, item, manager):
+# 		current = item['data']['url']
+# 		if current == '' or self.update_existing:
+# 			url = self.create_url(item)
+# 			if url is not None and url != current:
+# 				manager.add_update(item, msg=url)
+# 				item['data']['url'] = url
+# 				return url
+# 		manager.add_failed(item, msg=f'Unchanged: "{current}"')
+#
+#
+#
+# @fig.Script('fix-items', description='Fix missing or wrong properties of zotero items')
+# def fix_items(A):
+# 	A.push('manager._type', 'zotero-manager', overwrite=False, silent=True)
+# 	A.push('manager.pbar-desc', '--', overwrite=False, silent=True)
+# 	manager: Script_Manager = A.pull('manager')
+#
+# 	fixer = A.pull('fixer')
+# 	if manager.pbar_desc == '--':
+# 		manager.pbar_desc = f'Fixing {fixer.fixer_name}'
+#
+# 	A.push('brand-tag', f'props:{fixer.fixer_name}', overwrite=False, silent=True)
+# 	A.push('zotero._type', 'zotero', overwrite=False, silent=True)
+# 	zot: ZoteroProcess = A.pull('zotero')
+#
+# 	zot_query = A.pull('zotero-query', {})
+#
+# 	manager.preamble(zot=zot)
+#
+# 	todo = zot.top(**zot_query)
+# 	manager.log(f'Found {len(todo)} new items to process.')
+#
+# 	for item in manager.iterate(todo):
+# 		try:
+# 			fixer.fix(item, manager)
+# 		except Exception as e:
+# 			manager.log_error(e, item=item)
+#
+# 	return manager.finish()
+#
+#
+# # @fig.Component('semantic-scholar-matcher')
+# class Semantic_Scholar_Matcher(fig.Configurable):
+# 	def __init__(self, A, **kwargs):
+# 		super().__init__(A, **kwargs)
+# 		self.match_ratio = A.pull('match-ratio', 92)
+#
+# 	query_url = 'http://api.semanticscholar.org/graph/v1/paper/search?query={}'
+#
+# 	def title_to_query(self, title):
+# 		fixed = re.sub(r'[^a-zA-Z0-9 :-]', '', title)
+# 		fixed = fixed.replace('-', ' ').replace(' ', '+')
+# 		return quote(fixed).replace('%2B', '+')
+#
+# 	def call_home(self, url):
+# 		out = requests.get(url).json()
+# 		return out
+#
+# 	def format_result(self, ssid):
+# 		return f'https://api.semanticscholar.org/{ssid}' if len(ssid) else ssid
+#
+# 	# return f'https://www.semanticscholar.org/paper/{ssid}' if len(ssid) else ssid
+#
+# 	def find(self, item, dry_run=False):
+# 		title = item['data']['title']
+# 		clean = self.title_to_query(title)
+# 		url = self.query_url.format(clean)
+#
+# 		if dry_run:
+# 			return url
+#
+# 		out = self.call_home(url)
+#
+# 		for res in out.get('data', []):
+# 			if fuzz.ratio(res.get('title', ''), title) >= self.match_ratio:
+# 				return self.format_result(res.get('paperId', ''))
+# 		return ''
+#
+#
+# # @fig.Script('link-semantic-scholar', description='Find papers on Zotero on Semantic Scholar')
+# def link_semantic_scholar(A):
+# 	A.push('manager._type', 'zotero-manager', overwrite=False, silent=True)
+# 	A.push('manager.pbar-desc', 'Linking Semantic Scholar', overwrite=False, silent=True)
+# 	manager: Script_Manager = A.pull('manager')
+#
+# 	paper_types = A.pull('paper-types', ['conferencePaper', 'journalArticle', 'preprint'])
+# 	if paper_types is not None and not isinstance(paper_types, str):
+# 		paper_types = ' || '.join(paper_types)
+#
+# 	A.push('semantic-scholar-matcher._type', 'semantic-scholar-matcher', overwrite=False, silent=True)
+# 	matcher: Semantic_Scholar_Matcher = A.pull('semantic-scholar-matcher')
+#
+# 	A.push('brand-tag', 'semantic-scholar', overwrite=False, silent=True)
+# 	A.push('zotero._type', 'zotero', overwrite=False, silent=True)
+# 	zot: ZoteroProcess = A.pull('zotero')
+#
+# 	attachment_name = A.pull('semantic-scholar-name', 'Semantic Scholar')
+#
+# 	manager.preamble(zot=zot)
+#
+# 	timestamp = get_now()
+#
+# 	todo = zot.top(itemType=paper_types)
+# 	manager.log(f'Found {len(todo)} new items to process.')
+#
+# 	for item in manager.iterate(todo):
+# 		url = matcher.find(item, dry_run=manager.dry_run)
+#
+# 		if url is not None and len(url):
+# 			new = create_url(attachment_name, url, parentItem=item['data']['key'], accessDate=timestamp)
+# 			manager.add_new(new, msg=f'Found {url}')
+# 			manager.add_update(item, msg=f'Found {url}')
+# 		else:
+# 			manager.log_error('Matching Error', 'No match found', item=item)
+#
+# 	return manager.finish()
 
 
-@fig.Component('url-fixer')
-class Default_URL_Fixer(Item_Fixer):
-	def __init__(self, A, **kwargs):
-		super().__init__(A, **kwargs)
-		
-		self.update_existing = A.pull('update-existing', False)
-
-	@property
-	def fixer_name(self):
-		return 'url'
-
-	def create_url(self, item):
-		data = item['data']
-		
-		url = None
-		if data['itemType'] == 'film' and data['extra'].startswith('IMDb'):
-			url = 'https://www.imdb.com/title/{}/'.format(data['extra'].split('\n')[0].split('ID: ')[-1])
-		if data['itemType'] == 'book' and len(data.get('ISBN', '')):
-			url = 'https://isbnsearch.org/isbn/{}'.format(data['ISBN'].replace('-', ''))
-			
-		return url
-
-
-	def fix(self, item, manager):
-		current = item['data']['url']
-		if current == '' or self.update_existing:
-			url = self.create_url(item)
-			if url is not None and url != current:
-				manager.add_update(item, msg=url)
-				item['data']['url'] = url
-				return url
-		manager.add_failed(item, msg=f'Unchanged: "{current}"')
-
-
-
-@fig.Script('fix-items', description='Fix missing or wrong properties of zotero items')
-def fix_items(A):
+@fig.Script('item-feature', description='Extract feature from a Zotero entries')
+def item_feature(A):
 	A.push('manager._type', 'zotero-manager', overwrite=False, silent=True)
 	A.push('manager.pbar-desc', '--', overwrite=False, silent=True)
 	manager: Script_Manager = A.pull('manager')
 	
-	fixer = A.pull('fixer')
+	extractor: Item_Feature = A.pull('extractor', None)
 	if manager.pbar_desc == '--':
-		manager.pbar_desc = f'Fixing {fixer.fixer_name}'
-
-	A.push('brand-tag', f'props:{fixer.fixer_name}', overwrite=False, silent=True)
+		manager.pbar_desc = f'Extracting {extractor.feature_name}'
+	
+	A.push('brand-tag', f'feature:{extractor.feature_name}', overwrite=False, silent=True)
 	A.push('zotero._type', 'zotero', overwrite=False, silent=True)
 	zot: ZoteroProcess = A.pull('zotero')
-
-	zot_query = A.pull('zotero-query', {})
-
+	
 	manager.preamble(zot=zot)
 	
-	todo = zot.top(**zot_query)
+	todo = zot.top(**extractor.get_zotero_kwargs())
 	manager.log(f'Found {len(todo)} new items to process.')
-	
+
 	for item in manager.iterate(todo):
+		@lru_cache
+		def get_children(**kwargs):
+			return zot.children(item['key'], **kwargs)
 		try:
-			fixer.fix(item, manager)
+			extractor.extract(manager, item, get_children=get_children)
 		except Exception as e:
 			manager.log_error(e, item=item)
-	
+			# raise
+		
 	return manager.finish()
-	
 
-
-@fig.Component('semantic-scholar-matcher')
-class Semantic_Scholar_Matcher(fig.Configurable):
-	def __init__(self, A, **kwargs):
-		super().__init__(A, **kwargs)
-		self.match_ratio = A.pull('match-ratio', 92)
-		
-	query_url = 'http://api.semanticscholar.org/graph/v1/paper/search?query={}'
-	
-	
-	def title_to_query(self, title):
-		fixed = re.sub(r'[^a-zA-Z0-9 :-]', '', title)
-		fixed = fixed.replace('-', ' ').replace(' ', '+')
-		return quote(fixed).replace('%2B', '+')
-		
-	
-	def call_home(self, url):
-		out = requests.get(url).json()
-		return out
-	
-	
-	def format_result(self, ssid):
-		return f'https://api.semanticscholar.org/{ssid}' if len(ssid) else ssid
-		# return f'https://www.semanticscholar.org/paper/{ssid}' if len(ssid) else ssid
-	
-	
-	def find(self, item, dry_run=False):
-		title = item['data']['title']
-		clean = self.title_to_query(title)
-		url = self.query_url.format(clean)
-		
-		if dry_run:
-			return url
-		
-		out = self.call_home(url)
-		
-		for res in out.get('data', []):
-			if fuzz.ratio(res.get('title', ''), title) >= self.match_ratio:
-				return self.format_result(res.get('paperId', ''))
-		return ''
-
-
-
-@fig.Script('link-semantic-scholar', description='Find papers on Zotero on Semantic Scholar')
-def link_semantic_scholar(A):
-	A.push('manager._type', 'zotero-manager', overwrite=False, silent=True)
-	A.push('manager.pbar-desc', 'Linking Semantic Scholar', overwrite=False, silent=True)
-	manager: Script_Manager = A.pull('manager')
-	
-	paper_types = A.pull('paper-types', ['conferencePaper', 'journalArticle', 'preprint'])
-	if paper_types is not None and not isinstance(paper_types, str):
-		paper_types = ' || '.join(paper_types)
-	
-	A.push('semantic-scholar-matcher._type', 'semantic-scholar-matcher', overwrite=False, silent=True)
-	matcher: Semantic_Scholar_Matcher = A.pull('semantic-scholar-matcher')
-
-	A.push('brand-tag', 'semantic-scholar', overwrite=False, silent=True)
-	A.push('zotero._type', 'zotero', overwrite=False, silent=True)
-	zot: ZoteroProcess = A.pull('zotero')
-	
-	attachment_name = A.pull('semantic-scholar-name', 'Semantic Scholar')
-	
-	manager.preamble(zot=zot)
-	
-	timestamp = get_now()
-	
-	todo = zot.top(itemType=paper_types)
-	manager.log(f'Found {len(todo)} new items to process.')
-	
-	for item in manager.iterate(todo):
-		url = matcher.find(item, dry_run=manager.dry_run)
-		
-		if url is not None and len(url):
-			new = create_url(attachment_name, url, parentItem=item['data']['key'], accessDate=timestamp)
-			manager.add_new(new, msg=f'Found {url}')
-			manager.add_update(item, msg=f'Found {url}')
-		else:
-			manager.log_error('Matching Error', 'No match found', item=item)
-	
-	return manager.finish()
-	
 
 
 @fig.Component('file-processor')
@@ -362,14 +390,13 @@ def process_pdfs(A):
 	return manager.finish()
 
 
-
 @fig.Script('extract-attachment-feature', description='Generates a word cloud and list of key words from given source (linked) PDFs.')
 def extract_attachment_feature(A):
 	A.push('manager._type', 'zotero-manager', overwrite=False, silent=True)
 	A.push('manager.pbar-desc', '--', overwrite=False, silent=True)
 	manager: Script_Manager = A.pull('manager')
 	
-	extractor: Feature_Extractor = A.pull('feature-processor')
+	extractor: Attachment_Feature = A.pull('feature-processor')
 	
 	if manager.pbar_desc == '--':
 		manager.pbar_desc = f'Extracting {extractor.feature_name}'
@@ -386,10 +413,17 @@ def extract_attachment_feature(A):
 	
 	todo = zot.collect(q=source_name, itemType=source_type, **source_kwargs)
 	atts = {}
+	bad = []
 	for item in todo:
-		if item['data']['parentItem'] not in atts:
-			atts[item['data']['parentItem']] = []
-		atts[item['data']['parentItem']].append(item)
+		if 'parentItem' not in item['data']:
+			bad.append(item)
+		else:
+			if item['data']['parentItem'] not in atts:
+				atts[item['data']['parentItem']] = []
+			atts[item['data']['parentItem']].append(item)
+	
+	if len(bad):
+		manager.add_failed(*bad, msg=f'Missing parentItem for {len(bad)} items.')
 	
 	manager.log(f'Found {len(todo)} new attachments to extract {extractor.feature_name}.')
 	

@@ -53,9 +53,9 @@ class ZoteroProcess(fig.Configurable):
 			self.brand_items(brand_tag, items)
 		return self.zot.create_items(items, **kwargs)
 	
-	def top(self, brand_tag=None, **kwargs):
+	def top(self, brand_tag=None, top=True, **kwargs):
 		if len(kwargs) or brand_tag is not None:
-			return self.collect(top=True, brand_tag=brand_tag, **kwargs)
+			return self.collect(top=top, brand_tag=brand_tag, **kwargs)
 		if self._full_top is None:
 			self._full_top = self.collect(top=True)
 		return self._full_top
@@ -94,6 +94,9 @@ class ZoteroProcess(fig.Configurable):
 		collect_fn = self.zot.top if top else self.zot.items
 		return collect_fn(**kwargs)
 
+	def delete_items(self, items):
+		return [self.zot.delete_item(item) for item in items]
+		
 	def find_collection(self, **kwargs):
 		return self.zot.collections(**kwargs)
 

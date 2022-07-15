@@ -42,7 +42,8 @@ def onedrive_sharing(A):
 	
 	A.push('onedrive._type', 'onedrive-auth', overwrite=False, silent=True)
 	auth: OneDriveProcess = A.pull('onedrive')
-	auth.authorize()
+	if manager.is_real_run:
+		auth.authorize()
 
 	A.push('brand-tag', 'onedrive' if share_type is None else f'onedrive-{share_type}', overwrite=False, silent=True)
 	A.push('zotero._type', 'zotero', overwrite=False, silent=True)

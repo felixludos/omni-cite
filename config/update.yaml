@@ -1,0 +1,31 @@
+
+parents: [secrets, notion]
+
+
+#source-name: pdf
+
+#collection: media
+
+#ignore-brand: yes
+
+#silent: yes
+
+pbar: yes
+silence-config: yes
+silence-scripts: yes
+
+remove-imports: yes
+
+#update-existing: yes
+
+paper-types:
+  - conferencePaper
+  - journalArticle
+  - preprint
+
+zotero-storage: C:\Users\anwan\Zotero\storage
+zotero-cloud: C:\Users\anwan\OneDrive\Papers\zotero
+wordcloud-root: C:\Users\anwan\OneDrive\Papers\wordclouds
+onedrive-root: C:\Users\anwan\OneDrive
+
+
