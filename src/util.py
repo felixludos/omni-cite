@@ -203,14 +203,13 @@ class Script_Manager(fig.Configurable):
 		else:
 			self.write_dry_run()
 		
-		if not self.silent:
-			self.print()
+		self.print()
 			
 		return self
 			
 
 	def print(self, successes=True, errors=True):
-		if successes:
+		if not self.silent and successes:
 			print()
 			success = [[str(typ), str(msg),
 			        item.get('data', item).get('key', '--'),
@@ -221,16 +220,18 @@ class Script_Manager(fig.Configurable):
 			print(tabulate(success, headers=['Success', 'Message', 'Key', 'Type', 'Title']))
 			
 		if errors:
-			print()
-			errs = [[type(typ).__name__ if msg is None else str(typ),
-			            str(typ) if msg is None else str(msg),
-			        item.get('data', item).get('key', '--'),
-			        item.get('data', item).get('itemType', '--'),
-			        item.get('data', item).get('title', '--'), ]
-			       for typ, msg, item in self.errors]
-			errs.sort(key=lambda x: (x[0], x[1], x[3], x[4]))
-			print(tabulate(errs, headers=['Error', 'Message', 'Key', 'Type', 'Title']))
-
+			if len(self.errors):
+				print()
+				errs = [[type(typ).__name__ if msg is None else str(typ),
+				            str(typ) if msg is None else str(msg),
+				        item.get('data', item).get('key', '--'),
+				        item.get('data', item).get('itemType', '--'),
+				        item.get('data', item).get('title', '--'), ]
+				       for typ, msg, item in self.errors]
+				errs.sort(key=lambda x: (x[0], x[1], x[3], x[4]))
+				print(tabulate(errs, headers=['Error', 'Message', 'Key', 'Type', 'Title']))
+			else:
+				print('No Errors')
 
 
 _note_template = {'itemType': 'note',

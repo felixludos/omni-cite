@@ -135,7 +135,7 @@ class File_Processor(fig.Configurable):
 				if manager.is_real_run:
 					shutil.move(str(old), str(dest))
 				
-				manager.add_update(linked_file, msg=f'Renamed to {dest.name}')
+				manager.add_update(linked_file, item, msg=f'Renamed to {dest.name}')
 				
 			else:
 				manager.add_failed(item, msg=f'Unchanged: {dest.name}')
