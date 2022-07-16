@@ -35,6 +35,7 @@ parents: [update]
 #extractor._type: google-scholar
 #extractor._type: semantic-scholar
 
+limit: 15
 
 #source-name: pdf
 

@@ -6,6 +6,7 @@ __pycache__/
 extra/
 .idea/
 config/secrets.yaml
+onedrive-info.json
 
 # C extensions
 *.so

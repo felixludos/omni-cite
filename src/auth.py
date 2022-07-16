@@ -1,3 +1,6 @@
+import shutil
+from pathlib import Path
+import json
 import omnifig as fig
 import msal
 import webbrowser
@@ -15,6 +18,7 @@ class ZoteroProcess(fig.Configurable):
 		super().__init__(A, **kwargs)
 		self.zot = self._load_zotero(A)
 		self.brand_tag = A.pull('brand-tag', None)
+		self.limit = A.pull('limit', None)
 		self.ignore_brand_tag = A.pull('ignore-brand', False)
 		exclusion_tags = A.pull('exclusion-tags', [])
 		if exclusion_tags is not None:
@@ -86,7 +90,7 @@ class ZoteroProcess(fig.Configurable):
 		return self.zot.children(itemID, **kwargs)
 	
 	def collect(self, q=None, top=False, collection=None, brand_tag=None, ignore_brand=None,
-	            get_all=True, itemType=None, tag=None, **kwargs):
+	            limit=None, itemType=None, tag=None, **kwargs):
 		if brand_tag is None:
 			brand_tag = self.brand_tag
 		if len(self.exclusion_tags) or brand_tag is not None:
@@ -101,7 +105,8 @@ class ZoteroProcess(fig.Configurable):
 			if brand_tag is not None and not ignore_brand:
 				tag = [*tag, f'-{self._brand_tag_prefix}{brand_tag}']
 		
-		# TODO: handle pagination
+		if limit is None:
+			limit = self.limit
 		
 		if q is not None:
 			kwargs['q'] = q
@@ -109,6 +114,8 @@ class ZoteroProcess(fig.Configurable):
 			kwargs['itemType'] = itemType
 		if tag is not None:
 			kwargs['tag'] = tag
+		if limit is not None:
+			kwargs['limit'] = limit
 		
 		if collection is not None:
 			collect_fn = self.zot.collection_items_top if top else self.zot.collection_items
@@ -136,6 +143,9 @@ class OneDriveProcess(fig.Configurable):
 		
 		self.auto_copy = A.pull('auto-copy', True)
 		self.auto_open_browser = A.pull('auto-open-browser', True)
+		self.storage_path = A.pull('onedrive-info-path', 'onedrive-info.json')
+		if self.storage_path is not None:
+			self.storage_path = Path(self.storage_path)
 		
 		self.app_id = A.pull('graph-app-id', silent=True)
 		if self._onedrive_app is None:
@@ -155,20 +165,34 @@ class OneDriveProcess(fig.Configurable):
 	
 	def authorize(self): # TODO: setup (auto) refresh tokens
 		if self._onedrive_header is None:
-			self._onedrive_flow = self._onedrive_app.initiate_device_flow(scopes=self.scopes)
-			print('OneDrive:', self._onedrive_flow['message'])
-			if self.auto_copy:
-				pyperclip.copy(self._onedrive_flow['user_code'])
-				print('(code copied to clipboard!) Waiting for you to complete the sign in...')
+			new = True
+			if self.storage_path is not None and self.storage_path.exists():
+				with self.storage_path.open('r') as f:
+					result = json.load(f)
+				new = False
+				print('Using existing onedrive auth info (', self.storage_path, ')')
+			else:
+				self._onedrive_flow = self._onedrive_app.initiate_device_flow(scopes=self.scopes)
+				print('OneDrive:', self._onedrive_flow['message'])
+				if self.auto_copy:
+					pyperclip.copy(self._onedrive_flow['user_code'])
+					print('(code copied to clipboard!) Waiting for you to complete the sign in...')
+				
+				if self.auto_open_browser:
+					webbrowser.open(self._onedrive_flow['verification_uri'])
+				
+				# input('(code copied!) Press enter to continue...')
+				
+				result = self._onedrive_app.acquire_token_by_device_flow(self._onedrive_flow)
 			
-			if self.auto_open_browser:
-				webbrowser.open(self._onedrive_flow['verification_uri'])
-			
-			# input('(code copied!) Press enter to continue...')
-			
-			result = self._onedrive_app.acquire_token_by_device_flow(self._onedrive_flow)
 			access_token_id = result['access_token']
 			self.__class__._onedrive_header = {'Authorization': f'Bearer {access_token_id}'}
+			
+			if self.storage_path is not None and new:
+				with self.storage_path.open('w') as f:
+					json.dump(result, f)
+				print(f'OneDrive: Saved token to {self.storage_path}')
+			
 		print('OneDrive Authorization Success!')
 		# return self._onedrive_header
 	
@@ -188,9 +212,10 @@ class OneDriveProcess(fig.Configurable):
 			if out['error']['code'] == 'InvalidAuthenticationToken':
 				print('Token Expired, re-authorizing now.')
 				self.__class__._onedrive_header = None
+				if self.storage_path is not None and self.storage_path.exists():
+					shutil.rmtree(str(self.storage_path))
 				return self.send_request(send_fn, retry-1, auto_wait=auto_wait)
 		
-		# TODO: handle single request case: eg. out.get('status') == 429
 		if retry > 0 and auto_wait and out.get('responses', [{}])[0].get('status') == 429:
 			if 'responses' in out:
 				resp = out['responses'][0]
@@ -257,7 +282,7 @@ class OneDriveProcess(fig.Configurable):
 		return {'method': method.upper(), 'url': url, **kwargs}
 
 	
-	_batch_size = 20
+	_batch_size = 15
 	
 	def batch_send(self, reqs):
 		req_order = {id(req): i for i, req in enumerate(reqs)}
@@ -295,7 +320,7 @@ class OneDriveProcess(fig.Configurable):
 				
 					done = datetime.now() + timedelta(seconds=sec)
 					print(f'Waiting {sec // 60}:{str(sec % 60).zfill(2)} min '
-					      f'until {done.strftime("%H:%M:%S")} and then retrying...')
+					      f'until {done.strftime("%H:%M:%S")} and then retrying (safe to exit)...')
 					time.sleep(sec)
 				
 				else:
@@ -304,22 +329,4 @@ class OneDriveProcess(fig.Configurable):
 			remaining.extend(batch[int(resp['id'])-1] for resp in bad)
 		
 		return resps
-		#
-		# batches = [reqs[i:i+self._batch_size] for i in range(0, len(reqs), self._batch_size)]
-		# resps = []
-		# for batch in batches:
-		# 	for i, req in enumerate(batch):
-		# 		req['id'] = str(i + 1)
-		# 	out = self.send_request(lambda header:
-		# 	                         requests.post('https://graph.microsoft.com/v1.0/$batch',
-		# 	                                       json={'requests': batch},
-		# 	                                       headers={'content-type': 'application/json', **header}))
-		#
-		#
-		#
-		#
-		# 	# if 'responses' not in out:
-		# 	# 	return out
-		# 	resps.extend(sorted(out['responses'], key=lambda r: int(r['id'])))
-		# return resps
 	
