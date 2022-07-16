@@ -88,6 +88,8 @@ def sharing(A):
 	silence_config = A.pull('silence-config', silent, silent=True)
 	silence_scripts = A.pull('silence-scripts', silent, silent=True)
 	A.silence(silence_config)
+	
+	limit = A.pull('onedrive-limit', None)
 
 	file_links = A.pull('file-links', True)
 	if file_links:
@@ -95,6 +97,7 @@ def sharing(A):
 		A.push('silent', silence_scripts, silent=True, overwrite=False)
 		A.push('source-name', A.pull('file-source-name', 'PDF'), silent=True)
 		A.push('share-type', A.pull('file-share-type', None, silent=True), silent=True)
+		A.push('limit', limit, silent=True)
 		fig.run('onedrive-links', A)
 		A.abort()
 	elif not silent:
@@ -106,6 +109,7 @@ def sharing(A):
 		A.push('silent', silence_scripts, silent=True, overwrite=False)
 		A.push('source-name', A.pull('wordcloud-source-name', 'Wordcloud'), silent=True)
 		A.push('share-type', A.pull('wordcloud-share-type', 'download'), silent=True)
+		A.push('limit', limit, silent=True)
 		fig.run('onedrive-links', A)
 		A.abort()
 	elif not silent:
@@ -117,6 +121,7 @@ def sharing(A):
 		A.push('silent', silence_scripts, silent=True, overwrite=False)
 		A.push('source-name', A.pull('view-source-name', 'PDF'), silent=True)
 		A.push('share-type', A.pull('view-share-type', 'view'), silent=True)
+		A.push('limit', limit, silent=True)
 		fig.run('onedrive-links', A)
 		A.abort()
 	elif not silent:
@@ -128,6 +133,7 @@ def sharing(A):
 		A.push('silent', silence_scripts, silent=True, overwrite=False)
 		A.push('source-name', A.pull('edit-source-name', 'PDF'), silent=True)
 		A.push('share-type', A.pull('edit-share-type', 'edit'), silent=True)
+		A.push('limit', limit, silent=True)
 		fig.run('onedrive-links', A)
 		A.abort()
 	elif not silent:

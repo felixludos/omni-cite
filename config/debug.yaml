@@ -18,8 +18,8 @@
 #_meta.script_name: item-feature
 
 #_meta.script_name: process
-_meta.script_name: sharing
-#_meta.script_name: publish
+#_meta.script_name: sharing
+_meta.script_name: publish
 
 #parents: [secrets, notion]
 parents: [update]
@@ -34,8 +34,6 @@ parents: [update]
 #extractor._type: url-fixer
 #extractor._type: google-scholar
 #extractor._type: semantic-scholar
-
-limit: 15
 
 #source-name: pdf
 

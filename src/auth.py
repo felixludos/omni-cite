@@ -1,4 +1,4 @@
-import shutil
+import os, shutil
 from pathlib import Path
 import json
 import omnifig as fig
@@ -213,7 +213,7 @@ class OneDriveProcess(fig.Configurable):
 				print('Token Expired, re-authorizing now.')
 				self.__class__._onedrive_header = None
 				if self.storage_path is not None and self.storage_path.exists():
-					shutil.rmtree(str(self.storage_path))
+					os.remove(str(self.storage_path))
 				return self.send_request(send_fn, retry-1, auto_wait=auto_wait)
 		
 		if retry > 0 and auto_wait and out.get('responses', [{}])[0].get('status') == 429:

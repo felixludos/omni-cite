@@ -16,6 +16,9 @@ class Extractor(fig.Configurable):
 	class ExtractionError(Exception):
 		pass
 	
+	class SkipItem(Exception):
+		pass
+	
 	def __call__(self, item, get_children=None):
 		raise NotImplementedError
 		
@@ -189,9 +192,12 @@ class PDF_Path(PDF):
 class PDF_Link(PDF):
 	def __init__(self, A, allow_multiple=False, **kwargs):
 		super().__init__(A, allow_multiple=allow_multiple, **kwargs)
+		self.skip_if_missing = A.pull('skip-if-missing', False)
 	
 	def __call__(self, item, get_children=None):
 		pdf = super().__call__(item, get_children)
+		if self.skip_if_missing and (pdf is None or len(pdf['data']['url']) == 0):
+			raise self.SkipItem('No PDF URL found')
 		if pdf is None:
 			return
 		return pdf['data']['url']
@@ -210,8 +216,14 @@ class Wordcloud(AttachmentExtractor):
 
 @fig.Component('extractor/wordcloud/link')
 class Wordcloud_Link(Wordcloud):
+	def __init__(self, A, **kwargs):
+		super().__init__(A, **kwargs)
+		self.skip_if_missing = A.pull('skip-if-missing', False)
+		
 	def __call__(self, item, get_children=None):
 		wc = super().__call__(item, get_children)
+		if self.skip_if_missing and (wc is None or len(wc['data']['url']) == 0):
+			raise self.SkipItem('No Wordcloud URL found')
 		if wc is None:
 			return
 		return wc['data']['url']
@@ -534,16 +546,21 @@ class NotionPublisher(Publisher):
 
 	def process(self, item, get_children=None, manager=None):
 		# extract data
-		data, errors = self.extract(item, get_children)
-		for name, error in errors.items():
-			manager.log_error(f'{name}: {type(error).__name__}', str(error), item)
-		
-		# find notion page
-		notion_attachment = self.find_notion_attachment(item, get_children)
-		
-		todo = self.PublishTodo(item, data, notion_attachment)
-		self.publish_todo.append(todo)
-		return todo
+		try:
+			data, errors = self.extract(item, get_children)
+		except Extractor.SkipItem as e:
+			manager.log_error(e, item=item)
+		else:
+			for name, error in errors.items():
+				manager.log_error(f'{name}: {type(error).__name__}', str(error), item)
+			
+			# find notion page
+			notion_attachment = self.find_notion_attachment(item, get_children)
+			
+			todo = self.PublishTodo(item, data, notion_attachment)
+			
+			self.publish_todo.append(todo)
+			return todo
 
 	
 	def fingerprint(self, props):

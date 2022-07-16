@@ -10,13 +10,20 @@ collection: pro
 
 #silent: yes
 
+onedrive-limit: 15
+
 pbar: yes
 silence-config: yes
 silence-scripts: yes
 
 remove-imports: yes
 
+skip-if-missing: yes
+
 #update-existing: yes
+
+#zotero-query:
+#  tags: [omnicite:features:]
 
 paper-types:
   - conferencePaper
