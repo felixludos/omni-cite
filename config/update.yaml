@@ -1,4 +1,8 @@
 
+# fig process update
+# fig sharing update
+# fig publish update
+
 parents: [secrets, notion]
 
 

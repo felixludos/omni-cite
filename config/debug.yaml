@@ -13,16 +13,17 @@
 #_meta.script_name: link-semantic-scholar
 #_meta.script_name: process-attachments
 #_meta.script_name: extract-attachment-feature
-#_meta.script_name: onedrive-links
+_meta.script_name: onedrive-links
 #_meta.script_name: sync-notion
 #_meta.script_name: item-feature
 
 #_meta.script_name: process
 #_meta.script_name: sharing
-_meta.script_name: publish
+#_meta.script_name: publish
 
 #parents: [secrets, notion]
-parents: [update]
+#parents: [update]
+parents: [pdfs]
 
 #silence-config: no
 #silence-scripts: no
