@@ -1,6 +1,8 @@
 import omnifig as fig
 import msal
 import webbrowser
+from datetime import datetime, timedelta
+import time
 import requests
 import pyperclip
 from msal import PublicClientApplication
@@ -44,6 +46,13 @@ class ZoteroProcess(fig.Configurable):
 			brand_tag = self.brand_tag
 		if brand_tag is not None:
 			self.brand_items(brand_tag, items)
+		if len(items) > 50:
+			batches = [items[i:i+50] for i in range(0, len(items), 50)]
+			outs = []
+			for batch in batches:
+				out = self.zot.update_items(batch, **kwargs)
+				outs.append(out)
+			return all(outs)
 		return self.zot.update_items(items, **kwargs)
 	
 	def create_items(self, items, use_brand_tag=True, brand_tag=None, **kwargs):
@@ -51,6 +60,19 @@ class ZoteroProcess(fig.Configurable):
 			brand_tag = self.brand_tag
 		if brand_tag is not None:
 			self.brand_items(brand_tag, items)
+		if len(items) > 50:
+			batches = [items[i:i+50] for i in range(0, len(items), 50)]
+			outs = []
+			for batch in batches:
+				out = self.zot.create_items(batch, **kwargs)
+				outs.append(out)
+			total = {}
+			for i, out in enumerate(outs[1:]):
+				for k, vs in out.items():
+					if k not in total:
+						total[k] = {}
+					total[k].update({str(int(rid) + i*50): v for rid, v in vs.items()})
+			return total
 		return self.zot.create_items(items, **kwargs)
 	
 	def top(self, brand_tag=None, top=True, **kwargs):
@@ -155,7 +177,7 @@ class OneDriveProcess(fig.Configurable):
 	
 	endpoint = 'https://graph.microsoft.com/v1.0/me'
 	
-	def send_request(self, send_fn, retry=1):
+	def send_request(self, send_fn, retry=1, auto_wait=False):
 		if self.is_expired():
 			self.authorize()
 		
@@ -166,7 +188,34 @@ class OneDriveProcess(fig.Configurable):
 			if out['error']['code'] == 'InvalidAuthenticationToken':
 				print('Token Expired, re-authorizing now.')
 				self.__class__._onedrive_header = None
-				return self.send_request(send_fn, retry-1)
+				return self.send_request(send_fn, retry-1, auto_wait=auto_wait)
+		
+		# TODO: handle single request case: eg. out.get('status') == 429
+		if retry > 0 and auto_wait and out.get('responses', [{}])[0].get('status') == 429:
+			if 'responses' in out:
+				resp = out['responses'][0]
+				wait_time = resp.get('headers', {}).get('Retry-After')
+
+				etype = f'{resp["status"]} {resp["body"]["error"]["code"]}'
+				emsg = resp["body"]["error"]["message"]
+			else:
+				wait_time = out.get('headers', {}).get('Retry-After')
+
+				etype = f'{out["status"]} {out["body"]["error"]["code"]}'
+				emsg = out["body"]["error"]["message"]
+			
+			print(f'OneDrive: {etype}: {emsg}')
+			if wait_time is not None:
+				# wait_time = int(wait_time) + 1
+				# print(f'Waiting {wait_time // 60}:{str(wait_time % 60).zfill(2)} min and then retrying...')
+				
+				done = datetime.now() + timedelta(seconds=wait_time)
+				print(f'Waiting {wait_time // 60}:{str(wait_time % 60).zfill(2)} min '
+				      f'until {done.strftime("%H:%M:%S")} and then retrying...')
+				
+				time.sleep(wait_time)
+				return self.send_request(send_fn, retry=retry-1, auto_wait=auto_wait)
+		
 		return out
 		
 	
@@ -208,14 +257,69 @@ class OneDriveProcess(fig.Configurable):
 		return {'method': method.upper(), 'url': url, **kwargs}
 
 	
+	_batch_size = 20
+	
 	def batch_send(self, reqs):
-		for i, req in enumerate(reqs):
-			req['id'] = str(i + 1)
-		out = self.send_request(lambda header:
-		                         requests.post('https://graph.microsoft.com/v1.0/$batch',
-		                                       json={'requests': reqs},
-		                                       headers={'content-type': 'application/json', **header}))
-		if 'responses' not in out:
-			return out
-		return sorted(out['responses'], key=lambda r: int(r['id']))
+		req_order = {id(req): i for i, req in enumerate(reqs)}
+		
+		resps = [None] * len(reqs)
+		remaining = list(reqs)
+		while len(remaining):
+			batch = [remaining.pop() for _ in range(min(len(remaining), self._batch_size))]
+			for i, req in enumerate(batch):
+				req['id'] = str(i + 1)
+			
+			out = self.send_request(lambda header:
+			                        requests.post('https://graph.microsoft.com/v1.0/$batch',
+			                                      json={'requests': batch},
+			                                      headers={'content-type': 'application/json', **header}))
+			bad = []
+			for i, resp in enumerate(out['responses']):
+				if resp['status'] < 300:
+					resps[req_order[id(batch[int(resp['id'])-1])]] = resp
+				else:
+					# print(f'OneDrive: {resp["status"]} {resp["body"]["error"]["code"]}: {resp["body"]["error"]["message"]}')
+					bad.append(resp)
+			
+			if len(bad):
+				resp = bad[0]
+				etype = f'{resp["status"]} {resp["body"]["error"]["code"]}'
+				emsg = resp["body"]["error"]["message"]
+
+				wait_times = [int(resp['headers']['Retry-After'])
+				              for resp in bad if 'Retry-After' in resp.get('headers', {})]
+				
+				print(f'OneDrive: {etype}: {emsg}')
+				if len(wait_times):
+					sec = max(wait_times)
+				
+					done = datetime.now() + timedelta(seconds=sec)
+					print(f'Waiting {sec // 60}:{str(sec % 60).zfill(2)} min '
+					      f'until {done.strftime("%H:%M:%S")} and then retrying...')
+					time.sleep(sec)
+				
+				else:
+					raise Exception(f'OneDrive: {etype}: {emsg} (and no retry times given)')
+			
+			remaining.extend(batch[int(resp['id'])-1] for resp in bad)
+		
+		return resps
+		#
+		# batches = [reqs[i:i+self._batch_size] for i in range(0, len(reqs), self._batch_size)]
+		# resps = []
+		# for batch in batches:
+		# 	for i, req in enumerate(batch):
+		# 		req['id'] = str(i + 1)
+		# 	out = self.send_request(lambda header:
+		# 	                         requests.post('https://graph.microsoft.com/v1.0/$batch',
+		# 	                                       json={'requests': batch},
+		# 	                                       headers={'content-type': 'application/json', **header}))
+		#
+		#
+		#
+		#
+		# 	# if 'responses' not in out:
+		# 	# 	return out
+		# 	resps.extend(sorted(out['responses'], key=lambda r: int(r['id'])))
+		# return resps
 	
