@@ -143,7 +143,7 @@ class File_Processor(fig.Configurable):
 			return dest
 			
 		imports = [entry for entry in attachments
-		           if entry['data'].get('linkMode') == 'imported_url'
+		           if entry['data'].get('linkMode') in {'imported_url', 'imported_file'}
 		           and entry['data'].get('contentType') == 'application/pdf']
 		
 		if len(imports) > 1:

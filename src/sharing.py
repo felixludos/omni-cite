@@ -23,6 +23,9 @@ from .util import create_url, get_now, split_by_filter, Script_Manager
 
 @fig.Script('onedrive-links', description='Create OneDrive share links of zotero attachments')
 def onedrive_sharing(A):
+	silence_config = A.pull('silence-config', A.pull('silent', silent=True), silent=True)
+	A.silence(silence_config)
+
 	A.push('manager._type', 'zotero-manager', overwrite=False, silent=True)
 	A.push('manager.pbar-desc', 'OneDrive Links', overwrite=False, silent=True)
 	manager: Script_Manager = A.pull('manager')

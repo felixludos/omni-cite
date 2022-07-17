@@ -222,6 +222,7 @@ class Script_Manager(fig.Configurable):
 		if errors:
 			if len(self.errors):
 				print()
+				print(f'{len(self.errors)} Errors')
 				errs = [[type(typ).__name__ if msg is None else str(typ),
 				            str(typ) if msg is None else str(msg),
 				        item.get('data', item).get('key', '--'),

@@ -314,7 +314,7 @@ class OneDriveProcess(fig.Configurable):
 				wait_times = [int(resp['headers']['Retry-After'])
 				              for resp in bad if 'Retry-After' in resp.get('headers', {})]
 				
-				print(f'OneDrive: {etype}: {emsg}')
+				print(f'OneDrive: {etype}: {emsg} ({len(bad)}/{len(batch)} failed)')
 				if len(wait_times):
 					sec = max(wait_times)
 				
