@@ -25,6 +25,8 @@ _meta.script_name: process
 parents: [update]
 #parents: [pdfs]
 
+#limit: 1
+
 #silence-config: no
 #silence-scripts: no
 
