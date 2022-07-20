@@ -6,7 +6,7 @@ from . import sharing
 from . import publishing
 
 
-@fig.Script('process', description='Process zotero attachments')
+@fig.Script('process', description='Process zotero items (including PDFs, code links, wordclouds, etc.).')
 def process(A: fig.ConfigType):
 	silent = A.pull('silent', False, silent=True)
 	silence_config = A.pull('silence-config', silent, silent=True)
@@ -82,7 +82,7 @@ def process(A: fig.ConfigType):
 
 
 
-@fig.Script('sharing', description='Add sharing OneDrive links')
+@fig.Script('sharing', description='Add sharing OneDrive links to PDFs and Wordclouds.')
 def sharing(A):
 	silent = A.pull('silent', False, silent=True)
 	silence_config = A.pull('silence-config', silent, silent=True)
@@ -141,7 +141,7 @@ def sharing(A):
 
 
 
-@fig.Script('publish', description='Publish zotero attachments on Notion')
+@fig.Script('publish', description='Upload Zotero items on Notion database.')
 def publish(A):
 	silent = A.pull('silent', False, silent=True)
 	silence_config = A.pull('silence-config', silent, silent=True)
