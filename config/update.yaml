@@ -34,9 +34,9 @@ paper-types:
   - journalArticle
   - preprint
 
-zotero-storage: C:\Users\anwan\Zotero\storage
-zotero-cloud: C:\Users\anwan\OneDrive\Papers\zotero
-wordcloud-root: C:\Users\anwan\OneDrive\Papers\wordclouds
-onedrive-root: C:\Users\anwan\OneDrive
+#zotero-storage: C:\Users\anwan\Zotero\storage
+#zotero-cloud: C:\Users\anwan\OneDrive\Papers\zotero
+#wordcloud-root: C:\Users\anwan\OneDrive\Papers\wordclouds
+#onedrive-root: C:\Users\anwan\OneDrive
 
 

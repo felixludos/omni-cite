@@ -1,3 +1,5 @@
+omnibelt
+omnifig
 tqdm
 tabulate
 pyzotero
