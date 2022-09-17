@@ -1,6 +1,6 @@
 # omni-cite: Unlocking References with Zotero, OneDrive, and Notion
 
-[Showcase](https://www.notion.so/f1ba985954544885af4c5fbf0c9de3d5)
+[Showcase](https://felixludos.notion.site/f1ba985954544885af4c5fbf0c9de3d5)
 
 Omni-cite provides several scripts designed to greatly enhance management of references with Zotero. These scripts enable a workflow to efficiently process entries in your Zotero library to: 
 
@@ -85,11 +85,7 @@ After setting everything up, for regular use, the suggested procedure is:
     ```
     
     By default, this will only upload entries that are already have OneDrive links for the PDF and word cloud. However, if you are not using OneDrive, or don’t need those links to be included in Notion, then you can 
-    
 
-## Documentation
-
-[coming soon]
 
 ## Bibtex
 
