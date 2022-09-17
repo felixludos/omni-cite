@@ -3,7 +3,15 @@ import json
 from typing import Union, List, Dict, Callable, Tuple, Optional
 from functools import lru_cache
 import re
-from omnibelt import md5
+try:
+	from omnibelt import md5
+except ImportError:
+	import hashlib
+	def md5(s):
+		if not isinstance(s, str):
+			s = json.dumps(s, sort_keys=True)
+		return hashlib.md5(s.encode('utf-8')).hexdigest()
+
 import omnifig as fig
 import requests
 from dateutil import parser

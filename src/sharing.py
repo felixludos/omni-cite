@@ -76,7 +76,11 @@ def onedrive_sharing(A):
 	if manager.is_real_run:
 		if len(paths):
 			if share_type is None:
-				resps = auth.get_meta(list(paths.keys()))
+				try:
+					resps = auth.get_meta(list(paths.keys()))
+				except:
+					print(list(paths.keys()))
+					raise
 				links = [(r.get('body', {}).get('webUrl') if r.get('status', 0) in {200, 201} else None)
 				         for r in resps]
 			

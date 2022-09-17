@@ -8,8 +8,6 @@ parents: [secrets, notion]
 
 #source-name: pdf
 
-collection: pro
-
 #ignore-brand: yes
 
 #silent: yes
