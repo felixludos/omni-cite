@@ -249,19 +249,19 @@ class OneDriveProcess(fig.Configurable):
 			self.authorize()
 		
 		out = self.send_request(lambda header:
-		                        requests.get(self.endpoint + f'/drive/root:/{str(path)}/:/children',
+		                        requests.get(self.endpoint + f'/drive/root:/{str(path)}/:/children'.replace('\\', '/'),
 		                                             headers=header))
 		return out['value']
 		
 		
 	def get_meta(self, paths):
-		reqs = [self.generate_request(f'/me/drive/root:/{path}') for path in paths]
+		reqs = [self.generate_request(f'/me/drive/root:/{path}'.replace('\\', '/')) for path in paths]
 		out = self.batch_send(reqs)
 		return out
 
 	
 	def share_files(self, paths, mode='view'):
-		reqs = [self.generate_request(f'/me/drive/root:/{path}:/createLink',
+		reqs = [self.generate_request(f'/me/drive/root:/{path}:/createLink'.replace('\\', '/'),
 		                                  method='POST', headers={'content-type': 'application/json'},
 		                                  body={"type": {'download': 'embed'}.get(mode, mode),
 		                                        "scope": "anonymous"},)

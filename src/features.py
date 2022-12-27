@@ -217,7 +217,7 @@ class GithubExtractor(CodeExtractor, PDF_Feature):
 	
 	@staticmethod
 	def extract_pdf_links(path):
-		PDF = PyPDF2.PdfFileReader(str(path))
+		PDF = PyPDF2.PdfReader(str(path))
 		pages = PDF.pages
 		key = '/Annots'
 		uri = '/URI'
@@ -227,11 +227,12 @@ class GithubExtractor(CodeExtractor, PDF_Feature):
 		
 		for page in pages:
 			pageSliced = page  # PDF.getPage(page)
-			pageObject = pageSliced.getObject()
+			# pageObject = pageSliced.getObject()
+			pageObject = pageSliced.get_object()
 			if key in pageObject.keys():
 				ann = pageObject[key]
 				for a in ann:
-					u = a.getObject()
+					u = a.get_object()
 					if ank in u and uri in u[ank].keys():
 						#                 print(u[ank][uri])
 						urls.append(u[ank][uri])
