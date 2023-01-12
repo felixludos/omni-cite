@@ -12,12 +12,12 @@ from msal import PublicClientApplication
 from pyzotero import zotero
 
 
-@fig.Component('zotero')
-class ZoteroProcess(fig.Configurable):
+@fig.component('zotero')
+class ZoteroProcess: # should be configurable
 	def __init__(self, A, **kwargs):
-		super().__init__(A, **kwargs)
+		super().__init__(**kwargs)
 		self.zot = self._load_zotero(A)
-		self.brand_tag = A.pull('brand-tag', None)
+		self.brand_tag = A.pull('brand_tag', None)
 		self.limit = A.pull('limit', None)
 		self.ignore_brand_tag = A.pull('ignore-brand', False)
 		exclusion_tags = A.pull('exclusion-tags', [])
@@ -33,8 +33,8 @@ class ZoteroProcess(fig.Configurable):
 	@classmethod
 	def _load_zotero(cls, A):
 		if cls._zotero_obj is None:
-			cls._zotero_obj = zotero.Zotero(A.pull('zotero-library', silent=True), A.pull('zotero-library-type', silent=True),
-			                            A.pull('zotero-api-key', silent=True))
+			cls._zotero_obj = zotero.Zotero(A.pull('zotero_library', silent=True), A.pull('zotero_library_type', silent=True),
+			                            A.pull('zotero_api_key', silent=True))
 		return cls._zotero_obj
 	
 	_brand_tag_prefix = 'omnicite:'
@@ -136,25 +136,29 @@ class ZoteroProcess(fig.Configurable):
 		return self.zot.all_collections(**kwargs)
 
 
-@fig.Component('onedrive-auth')
+@fig.component('onedrive-auth')
 class OneDriveProcess(fig.Configurable):
-	def __init__(self, A, **kwargs):
-		super().__init__(A, **kwargs)
+	@fig.silent_config_args('graph_app_id', '_header')
+	def __init__(self, graph_app_id, _header=None, graph_scopes=(),
+	             auto_copy=True, auto_open_browser=True, onedrive_info_path='onedrive-info.json',
+	             
+	             **kwargs):
+		super().__init__(**kwargs)
 		
-		self.auto_copy = A.pull('auto-copy', True)
-		self.auto_open_browser = A.pull('auto-open-browser', True)
-		self.storage_path = A.pull('onedrive-info-path', 'onedrive-info.json')
+		self.auto_copy = auto_copy
+		self.auto_open_browser = auto_open_browser
+		self.storage_path = onedrive_info_path
 		if self.storage_path is not None:
 			self.storage_path = Path(self.storage_path)
 		
-		self.app_id = A.pull('graph-app-id', silent=True)
+		self.app_id = graph_app_id
 		if self._onedrive_app is None:
 			self.__class__._onedrive_app = PublicClientApplication(self.app_id, authority=self._authority_url)
 		
 		if self._onedrive_header is None:
-			self.__class__._onedrive_header = A.pull('_header', None, silent=True)
+			self.__class__._onedrive_header = _header
 		
-		self.scopes = list(A.pull('graph-scopes', []))
+		self.scopes = list(graph_scopes)
 		
 		
 	_authority_url = 'https://login.microsoftonline.com/consumers'

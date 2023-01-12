@@ -3,7 +3,7 @@
 # fig sharing update
 # fig publish update
 
-parents: [secrets, notion]
+_base: [secrets, notion]
 
 
 #source-name: pdf
@@ -20,19 +20,19 @@ silence-scripts: yes
 
 remove-imports: yes
 
-skip-if-missing: yes
+skip_if_missing: yes
 
-#update-existing: yes
+#update_existing: yes
 
 #zotero-query:
 #  tags: [omnicite:features:]
 
-paper-types:
+paper_types:
   - conferencePaper
   - journalArticle
   - preprint
 
-#zotero-storage: C:\Users\anwan\Zotero\storage
+#zotero_storage: C:\Users\anwan\Zotero\storage
 #zotero-cloud: C:\Users\anwan\OneDrive\Papers\zotero
 #wordcloud-root: C:\Users\anwan\OneDrive\Papers\wordclouds
 #onedrive-root: C:\Users\anwan\OneDrive

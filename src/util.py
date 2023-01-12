@@ -24,27 +24,13 @@ def split_by_filter(options, filter_fn):
 	return good, bad
 	
 
-@fig.Component('zotero-manager')
+@fig.component('zotero-manager')
 class Script_Manager(fig.Configurable):
-	def __init__(self, A, dry_run=None, silent=None, brand_errors=None,
-	             pbar=None, pbar_desc=None, **kwargs):
-		
-		if dry_run is None:
-			dry_run = A.pull('dry-run', False)
-		
-		if silent is None:
-			silent = A.pull('silent', False)
-		
+	def __init__(self, dry_run=False, silent=False, pbar=None, pbar_desc=None, brand_errors=False, **kwargs):
 		if pbar is None:
-			pbar = A.pull('pbar', not silent)
+			pbar = not silent
 		
-		if pbar_desc is None:
-			pbar_desc = A.pull('pbar-desc', None)
-		
-		if brand_errors is None:
-			brand_errors = A.pull('brand-errors', False)
-		
-		super().__init__(A, **kwargs)
+		super().__init__(**kwargs)
 		self.dry_run = dry_run
 		self.silent = silent
 		self.pbar = pbar

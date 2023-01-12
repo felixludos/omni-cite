@@ -32,9 +32,8 @@ class Item_Feature(fig.Configurable):
 
 
 class Paper_Feature(Item_Feature):
-	def __init__(self, A, **kwargs):
-		super().__init__(A, **kwargs)
-		paper_types = A.pull('paper-types', ['conferencePaper', 'journalArticle', 'preprint'])
+	def __init__(self, paper_types='conferencePaper || journalArticle || preprint', **kwargs):
+		super().__init__(**kwargs)
 		if paper_types is not None and not isinstance(paper_types, str):
 			paper_types = ' || '.join(paper_types)
 		self.paper_types = paper_types
@@ -46,12 +45,11 @@ class Paper_Feature(Item_Feature):
 		return kwargs
 
 
-@fig.Component('url-fixer')
+@fig.component('url-fixer')
 class Default_URL_Fixer(Item_Feature):
-	def __init__(self, A, **kwargs):
-		super().__init__(A, **kwargs)
-		
-		self.update_existing = A.pull('update-existing', False)
+	def __init__(self, update_existing=False, **kwargs):
+		super().__init__(**kwargs)
+		self.update_existing = update_existing
 
 	@property
 	def feature_name(self):
@@ -79,11 +77,11 @@ class Default_URL_Fixer(Item_Feature):
 		manager.add_failed(item, msg=f'Unchanged: "{current}"')
 
 
-@fig.Component('google-scholar')
+@fig.component('google-scholar')
 class Google_Scholar(Paper_Feature):
-	def __init__(self, A, **kwargs):
-		super().__init__(A, **kwargs)
-		self.attachment_name = A.pull('attachment-name', 'Google Scholar')
+	def __init__(self, attachment_name='Google Scholar', **kwargs):
+		super().__init__(**kwargs)
+		self.attachment_name = attachment_name
 		self.timestamp = get_now()
 
 	@property
@@ -104,12 +102,12 @@ class Google_Scholar(Paper_Feature):
 			manager.add_failed(item, msg='No title')
 
 
-@fig.Component('semantic-scholar')
+@fig.component('semantic-scholar')
 class Semantic_Scholar(Paper_Feature):
-	def __init__(self, A, **kwargs):
-		super().__init__(A, **kwargs)
-		self.match_ratio = A.pull('match-ratio', 92)
-		self.attachment_name = A.pull('attachment-name', 'Semantic Scholar')
+	def __init__(self, match_ratio=92, attachment_name='Semantic Scholar', **kwargs):
+		super().__init__(**kwargs)
+		self.match_ratio = match_ratio
+		self.attachment_name = attachment_name
 		self.timestamp = get_now()
 	
 	@property
@@ -159,10 +157,10 @@ class Semantic_Scholar(Paper_Feature):
 
 
 class Attachment_Feature(fig.Configurable):
-	def __init__(self, A, feature_title=None, **kwargs):
-		if feature_title is None:
-			feature_title = A.pull('feature-title')
-		super().__init__(A, **kwargs)
+	def __init__(self, feature_title, **kwargs):
+		# if feature_title is None:
+		# 	feature_title = A.pull('feature-title')
+		super().__init__(**kwargs)
 		self.feature_title = feature_title
 	
 	@property
@@ -197,12 +195,10 @@ class CodeExtractor(Attachment_Feature):
 		return []
 
 
-@fig.Component('github-extractor')
+@fig.component('github-extractor')
 class GithubExtractor(CodeExtractor, PDF_Feature):
-	def __init__(self, A, feature_title=None, **kwargs):
-		if feature_title is None:
-			feature_title = A.pull('feature-title', 'Code Links')
-		super().__init__(A, feature_title=feature_title, **kwargs)
+	def __init__(self, feature_title='Code Links', **kwargs):
+		super().__init__(feature_title=feature_title, **kwargs)
 
 	@property
 	def feature_name(self):
@@ -297,32 +293,22 @@ class GithubExtractor(CodeExtractor, PDF_Feature):
 
 
 
-@fig.Component('wordcloud')
+@fig.component('wordcloud')
 class WordcloudMaker(PDF_Feature, fig.Configurable):
-	def __init__(self, A, height=400, width=800, max_words=50, min_font_size=10, min_word_length=3,
-	             background_color='black', colormap='Pastel2', stopwords=[], feature_title='Wordcloud',
-	             **kwargs):
-		
-		wordcloud_root = Path(A.pull('wordcloud-root', str(Path.home() / 'OneDrive/Papers/wordclouds')))
+	def __init__(self, wordcloud_root=str(Path.home() / 'OneDrive/Papers/wordclouds'),
+	             height=400, width=800, max_words=50, min_font_size=10, min_word_length=3,
+	             background_color='black', colormap='Pastel2',
+	             use_stopwords=True, extra_stopwords=(),
+	             feature_title='Wordcloud', **kwargs):
+		wordcloud_root = Path(wordcloud_root)
 		if not wordcloud_root.exists():
 			os.makedirs(str(wordcloud_root))
 			
-		if feature_title is None:
-			feature_title = A.pull('feature-title', 'Code Links')
-		height = A.pull('height', '<>H', height)
-		width = A.pull('width', '<>W', width)
-		max_words = A.pull('max-words', max_words)
-		min_font_size = A.pull('min-font-size', min_font_size)
-		min_word_length = A.pull('min-word-length', min_word_length)
-		background_color = A.pull('background-color', background_color)
-		colormap = A.pull('colormap', colormap)
-		use_stopwords = A.pull('use-stopwords', True)
-		stopwords = set(A.pull('extra-stopwords', stopwords))
+		stopwords = set(extra_stopwords)
 		if use_stopwords:
 			stopwords = {*stopwords, *self.EXPANDED_STOPWORDS}
-		# ext = A.pull('ext', 'jpg')
 		
-		super().__init__(A, feature_title=feature_title, **kwargs)
+		super().__init__(feature_title=feature_title, **kwargs)
 		
 		self.size = height, width
 		self.max_words = max_words

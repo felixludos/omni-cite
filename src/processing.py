@@ -20,17 +20,17 @@ from .features import Attachment_Feature, Item_Feature
 from .auth import ZoteroProcess
 
 
-@fig.Script('item-feature', description='Extract feature from a Zotero entries')
+@fig.script('item-feature', description='Extract feature from a Zotero entries')
 def item_feature(A):
 	A.push('manager._type', 'zotero-manager', overwrite=False, silent=True)
-	A.push('manager.pbar-desc', '--', overwrite=False, silent=True)
+	A.push('manager.pbar_desc', '--', overwrite=False, silent=True)
 	manager: Script_Manager = A.pull('manager')
 	
 	extractor: Item_Feature = A.pull('extractor', None)
 	if manager.pbar_desc == '--':
 		manager.pbar_desc = f'Extracting {extractor.feature_name}'
 	
-	A.push('brand-tag', f'feature:{extractor.feature_name}', overwrite=False, silent=True)
+	A.push('brand_tag', f'feature:{extractor.feature_name}', overwrite=False, silent=True)
 	A.push('zotero._type', 'zotero', overwrite=False, silent=True)
 	zot: ZoteroProcess = A.pull('zotero')
 	
@@ -52,23 +52,26 @@ def item_feature(A):
 	return manager.finish()
 
 
-@fig.Component('file-processor')
+@fig.component('file-processor')
 class File_Processor(fig.Configurable):
-	def __init__(self, A, **kwargs):
-		super().__init__(A, **kwargs)
+	def __init__(self, zotero_storage=str(Path.home() / 'Zotero/storage'),
+	             cloud_root=str(Path.home() / 'OneDrive/Papers/zotero'),
+	             attachment_name='PDF', snapshot_name='Snapshot', snapshot_to_pdf=True, remove_imports=False,
+	             extension='pdf', suffix='', **kwargs):
+		super().__init__(**kwargs)
 
-		self.attachment_name = A.pull('attachment-name', 'PDF')
-		self.snapshot_name = A.pull('snapshot-name', 'Snapshot')
-		self.snapshot_to_pdf = A.pull('snapshot-to-pdf', True)
-		self.remove_imports = A.pull('remove-imports', False)
-		self.extension = A.pull('extension', 'pdf')
-		self.suffix = A.pull('suffix', '')
+		self.attachment_name = attachment_name
+		self.snapshot_name = snapshot_name
+		self.snapshot_to_pdf = snapshot_to_pdf
+		self.remove_imports = remove_imports
+		self.extension = extension
+		self.suffix = suffix
 		
-		zotero_storage = Path(A.pull('zotero-storage', str(Path.home() / 'Zotero/storage')))
-		assert zotero_storage.exists(), f'Missing zotero storage directory: {str(zotero_storage)}'
+		zotero_storage = Path(zotero_storage)
+		assert zotero_storage.exists(), f'Missing zotero storage directory: {zotero_storage}'
 		self.zotero_storage = zotero_storage
 		
-		cloud_root = Path(A.pull('zotero-cloud-storage', str(Path.home() / 'OneDrive/Papers/zotero')))
+		cloud_root = Path(cloud_root)
 		if not cloud_root.exists():
 			os.makedirs(str(cloud_root))
 		self.cloud_root = cloud_root
@@ -210,16 +213,16 @@ class File_Processor(fig.Configurable):
 	
 
 
-@fig.Script('process-attachments', description='Converts imported (local) PDFs and/or HTML Snapshots to linked PDFs.')
+@fig.script('process-attachments', description='Converts imported (local) PDFs and/or HTML Snapshots to linked PDFs.')
 def process_pdfs(A):
 	A.push('manager._type', 'zotero-manager', overwrite=False, silent=True)
-	A.push('manager.pbar-desc', 'Processing Attachments', overwrite=False, silent=True)
+	A.push('manager.pbar_desc', 'Processing Attachments', overwrite=False, silent=True)
 	manager: Script_Manager = A.pull('manager')
 
 	A.push('attachment-processor._type', 'file-processor', overwrite=False, silent=True)
 	processor: File_Processor = A.pull('attachment-processor')
 	
-	A.push('brand-tag', 'attachments', overwrite=False, silent=True)
+	A.push('brand_tag', 'attachments', overwrite=False, silent=True)
 	A.push('zotero._type', 'zotero', overwrite=False, silent=True)
 	zot: ZoteroProcess = A.pull('zotero')
 	
@@ -238,10 +241,11 @@ def process_pdfs(A):
 	return manager.finish()
 
 
-@fig.Script('extract-attachment-feature', description='Generates a word cloud and list of key words from given source (linked) PDFs.')
+@fig.script('extract-attachment-feature',
+            description='Generates a word cloud and list of key words from given source (linked) PDFs.')
 def extract_attachment_feature(A):
 	A.push('manager._type', 'zotero-manager', overwrite=False, silent=True)
-	A.push('manager.pbar-desc', '--', overwrite=False, silent=True)
+	A.push('manager.pbar_desc', '--', overwrite=False, silent=True)
 	manager: Script_Manager = A.pull('manager')
 	
 	extractor: Attachment_Feature = A.pull('feature-processor')
@@ -253,7 +257,7 @@ def extract_attachment_feature(A):
 	source_type = A.pull('source-type', 'attachment')
 	source_kwargs = A.pull('source-kwargs', {})
 	
-	A.push('brand-tag', f'feature:{extractor.feature_name}', overwrite=False, silent=True)
+	A.push('brand_tag', f'feature:{extractor.feature_name}', overwrite=False, silent=True)
 	A.push('zotero._type', 'zotero', overwrite=False, silent=True)
 	zot: ZoteroProcess = A.pull('zotero')
 	

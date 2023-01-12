@@ -1,10 +1,10 @@
 
 
-#include-auto-tags: no
+#include_auto_tags: no
 
 publisher._type: notion-publisher
 
-cover-extractor:
+cover_extractor:
   _type: extractor/wordcloud/link
   _mod.to-url: yes
 
@@ -37,13 +37,13 @@ extractors:
   Auto Tags:
     _type: extractor/tags
     _mod.to-multi-select: yes
-    include-auto-tags: yes
-    include-real-tags: no
+    include_auto_tags: yes
+    include_real_tags: no
 
   Collections:
     _type: extractor/collections
     _mod.to-multi-select: yes
-    path-delimiter: '/'
+    path_delimiter: '/'
 
 
   Code:

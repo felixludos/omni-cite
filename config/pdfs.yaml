@@ -1,7 +1,7 @@
 
 # fig onedrive-links pdfs
 
-parents: [update]
+_base: [update]
 
 source-name: PDF
 share-type: null

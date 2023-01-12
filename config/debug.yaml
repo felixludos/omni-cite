@@ -18,19 +18,19 @@
 #_meta.script_name: item-feature
 
 #_meta.script_name: process
-_meta.script_name: sharing
-#_meta.script_name: publish
+#_meta.script_name: sharing
+_meta.script_name: publish
 
-#parents: [secrets, notion]
-parents: [update]
-#parents: [pdfs]
+#_base: [secrets, notion]
+_base: [update]
+#_base: [pdfs]
 
 #limit: 1
 
 #silence-config: no
 #silence-scripts: no
 
-#dry-run: yes
+dry_run: yes
 
 #silent: yes
 
@@ -51,18 +51,18 @@ parents: [update]
 
 #remove-imports: yes
 
-#update-existing: yes
+#update_existing: yes
 
-#paper-types:
+#paper_types:
 #  - conferencePaper
 #  - journalArticle
 #  - preprint
 
 
-#zotero-storage: C:\Users\anwan\Zotero\storage
-#zotero-cloud: C:\Users\anwan\OneDrive\Papers\zotero
-#wordcloud-root: C:\Users\anwan\OneDrive\Papers\wordclouds
-#onedrive-root: C:\Users\anwan\OneDrive
+#zotero_storage: C:\Users\anwan\Zotero\storage
+#zotero_cloud: C:\Users\anwan\OneDrive\Papers\zotero
+#wordcloud_root: C:\Users\anwan\OneDrive\Papers\wordclouds
+#onedrive_root: C:\Users\anwan\OneDrive
 
 ################
 
