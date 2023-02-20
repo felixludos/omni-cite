@@ -170,7 +170,7 @@ class Attachment_Based(fig.Configurable):
 			path = Path(path)
 			if self.attachment_base_root is not None:
 				path = self.attachment_base_root / path
-		return path
+		return Path(path)
 
 
 class Attachment_Feature(Attachment_Based):
