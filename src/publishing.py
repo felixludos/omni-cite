@@ -18,6 +18,7 @@ from dateutil import parser
 
 from .util import Script_Manager, create_url, get_now
 from .auth import ZoteroProcess
+from .features import Attachment_Based
 
 
 class Extractor(fig.Configurable):
@@ -145,7 +146,7 @@ class Arxiv(Extractor):
 			return self.arxiv_format.format(ID=ID)
 
 
-class AttachmentExtractor(Extractor):
+class AttachmentExtractor(Extractor, Attachment_Based):
 	def __init__(self, *, allow_multiple=False, **kwargs):
 		super().__init__(**kwargs)
 		self.allow_multiple = allow_multiple
@@ -184,7 +185,7 @@ class PDF_Path(PDF):
 		pdf = super().__call__(item, get_children)
 		if pdf is None:
 			return
-		path = Path(pdf['data']['path'])
+		path = self.fix_path(pdf['data']['path'])
 		return str(path) if self.full_path else path.stem
 
 

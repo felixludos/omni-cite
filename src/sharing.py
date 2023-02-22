@@ -18,6 +18,7 @@ import PyPDF2
 from fuzzywuzzy import fuzz
 
 from .auth import ZoteroProcess, OneDriveProcess
+from .features import Attachment_Based
 from .util import create_url, get_now, split_by_filter, Script_Manager
 
 
@@ -54,6 +55,9 @@ def onedrive_sharing(A):
 	
 	manager.preamble(zot=zot)
 	
+	A.push('attachment-fixer._type', 'attachment-path', overwrite=False, silent=True)
+	fixer: Attachment_Based = A.pull('attachment-fixer')
+	
 	timestamp = get_now()
 	
 	attachments = zot.collect(q=source_name, itemType='attachment')
@@ -64,7 +68,7 @@ def onedrive_sharing(A):
 	
 	paths = {}
 	for item in attachments:
-		path = Path(item['data']['path'])
+		path = fixer.fix_path(item['data']['path'])
 		
 		try:
 			loc = path.relative_to(onedrive_root)

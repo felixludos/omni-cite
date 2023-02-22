@@ -156,7 +156,24 @@ class Semantic_Scholar(Paper_Feature):
 			manager.add_failed(item, msg='No match found')
 
 
-class Attachment_Feature(fig.Configurable):
+@fig.component('attachment-path')
+class Attachment_Based(fig.Configurable):
+	def __init__(self, attachment_base_root=str(Path.home() / 'OneDrive'), **kwargs):
+		if attachment_base_root is not None:
+			attachment_base_root = Path(attachment_base_root)
+		super().__init__(**kwargs)
+		self.attachment_base_root = Path(attachment_base_root)
+	
+	def fix_path(self, path):
+		if path.startswith('attachments:'):
+			path = path.replace('attachments:', '')
+			path = Path(path)
+			if self.attachment_base_root is not None:
+				path = self.attachment_base_root / path
+		return path
+
+
+class Attachment_Feature(Attachment_Based):
 	def __init__(self, feature_title, **kwargs):
 		# if feature_title is None:
 		# 	feature_title = A.pull('feature-title')
@@ -273,7 +290,7 @@ class GithubExtractor(CodeExtractor, PDF_Feature):
 	def extract(self, items, get_parent, manager):
 		srcs = [src for src in items if 'path' in src['data']]
 		assert len(srcs), 'No sources found'
-		urls = [url for src in srcs for url in self.code_urls_from_path(src['data']['path'])]
+		urls = [url for src in srcs for url in self.code_urls_from_path(self.fix_path(src['data']['path']))]
 		urls = list(OrderedDict.fromkeys(urls))
 		
 		if len(urls):
@@ -438,7 +455,7 @@ class WordcloudMaker(PDF_Feature, fig.Configurable):
 	
 	
 	def extract(self, items, get_parent, manager):
-		srcs = [Path(src['data']['path']) for src in items if 'path' in src['data']]
+		srcs = [Path(self.fix_path(src['data']['path'])) for src in items if 'path' in src['data']]
 		assert len(srcs), 'No sources found'
 		
 		dest = self.wordcloud_root / f'{srcs[-1].stem}.jpg'

@@ -32,6 +32,7 @@ paper_types:
   - journalArticle
   - preprint
 
+#attachment-base-root: C:\Users\anwan\OneDrive\
 #zotero_storage: C:\Users\anwan\Zotero\storage
 #zotero-cloud: C:\Users\anwan\OneDrive\Papers\zotero
 #wordcloud-root: C:\Users\anwan\OneDrive\Papers\wordclouds

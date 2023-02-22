@@ -16,7 +16,7 @@ import PyPDF2
 from fuzzywuzzy import fuzz
 
 from .util import create_url, create_file, get_now, Script_Manager
-from .features import Attachment_Feature, Item_Feature
+from .features import Attachment_Feature, Item_Feature, Attachment_Based
 from .auth import ZoteroProcess
 
 
@@ -53,7 +53,7 @@ def item_feature(A):
 
 
 @fig.component('file-processor')
-class File_Processor(fig.Configurable):
+class File_Processor(Attachment_Based):
 	def __init__(self, zotero_storage=str(Path.home() / 'Zotero/storage'),
 	             cloud_root=str(Path.home() / 'OneDrive/Papers/zotero'),
 	             attachment_name='PDF', snapshot_name='Snapshot', snapshot_to_pdf=True, remove_imports=False,
@@ -130,7 +130,7 @@ class File_Processor(fig.Configurable):
 		
 		if len(existing) == 1:
 			linked_file = existing[0]
-			old = Path(linked_file['data']['path'])
+			old = self.fix_path(linked_file['data']['path'])
 			
 			if dest != old:
 				linked_file['data']['path'] = str(dest)
