@@ -12,3 +12,4 @@ wordcloud
 pyperclip
 backoff
 msal
+pymupdf
