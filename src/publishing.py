@@ -684,6 +684,8 @@ def sync_notion(A):
 	publisher.prepare(zot)
 	
 	todo = zot.top(**zot_query)
+	# if A.pull('skip-computer-programs', True):
+	# 	todo = [item for item in todo if item.get('data', {}).get('itemType') not in {'computerProgram', ''}]
 	manager.log(f'Found {len(todo)} new items to process.')
 	
 	for item in manager.iterate(todo):
