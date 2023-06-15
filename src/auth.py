@@ -33,8 +33,8 @@ class ZoteroProcess: # should be configurable
 	@classmethod
 	def _load_zotero(cls, A):
 		if cls._zotero_obj is None:
-			cls._zotero_obj = zotero.Zotero(A.pull('zotero_library', silent=True), A.pull('zotero_library_type', silent=True),
-			                            A.pull('zotero_api_key', silent=True))
+			cls._zotero_obj = zotero.Zotero(A.pull('zotero-library', silent=True), A.pull('zotero_library_type', silent=True),
+			                            A.pull('zotero-api-key', silent=True))
 		return cls._zotero_obj
 	
 	_brand_tag_prefix = 'omnicite:'
