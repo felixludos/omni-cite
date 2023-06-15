@@ -17,7 +17,7 @@ class ZoteroProcess: # should be configurable
 	def __init__(self, A, **kwargs):
 		super().__init__(**kwargs)
 		self.zot = self._load_zotero(A)
-		self.brand_tag = A.pull('brand_tag', None)
+		self.brand_tag = A.pull('brand-tag', None)
 		self.limit = A.pull('limit', None)
 		self.ignore_brand_tag = A.pull('ignore-brand', False)
 		exclusion_tags = A.pull('exclusion-tags', [])
@@ -33,7 +33,7 @@ class ZoteroProcess: # should be configurable
 	@classmethod
 	def _load_zotero(cls, A):
 		if cls._zotero_obj is None:
-			cls._zotero_obj = zotero.Zotero(A.pull('zotero-library', silent=True), A.pull('zotero_library_type', silent=True),
+			cls._zotero_obj = zotero.Zotero(A.pull('zotero-library', silent=True), A.pull('zotero-library-type', silent=True),
 			                            A.pull('zotero-api-key', silent=True))
 		return cls._zotero_obj
 	
@@ -138,7 +138,7 @@ class ZoteroProcess: # should be configurable
 
 @fig.component('onedrive-auth')
 class OneDriveProcess(fig.Configurable):
-	@fig.silent_config_args('graph_app_id', '_header')
+	@fig.silent_config_args('graph-app-id', '_header')
 	def __init__(self, graph_app_id, _header=None, graph_scopes=(),
 	             auto_copy=True, auto_open_browser=True, onedrive_info_path='onedrive-info.json',
 	             
