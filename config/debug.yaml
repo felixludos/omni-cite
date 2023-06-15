@@ -18,8 +18,8 @@
 #_meta.script_name: item-feature
 
 #_meta.script_name: process
-#_meta.script_name: sharing
-_meta.script_name: publish
+_meta.script_name: sharing
+#_meta.script_name: publish
 
 #_base: [secrets, notion]
 _base: [update]
@@ -30,7 +30,7 @@ _base: [update]
 #silence-config: no
 #silence-scripts: no
 
-dry_run: yes
+#dry_run: yes
 
 #silent: yes
 
@@ -55,6 +55,7 @@ dry_run: yes
 
 #paper_types:
 #  - conferencePaper
+#  - bookSection
 #  - journalArticle
 #  - preprint
 

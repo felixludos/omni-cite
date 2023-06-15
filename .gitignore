@@ -11,6 +11,7 @@ onedrive-info.json
 # C extensions
 *.so
 
+.DS_Store
 # Distribution / packaging
 .Python
 build/

@@ -26,19 +26,19 @@ extractors:
     _mod.to-date: yes
     include-time: no
 
-  Abstract:
-    _type: extractor/abstractNote
-    _mod.to-rich-text: yes
+#  Abstract:
+#    _type: extractor/abstractNote
+#    _mod.to-rich-text: yes
 
   Tags:
     _type: extractor/tags
     _mod.to-multi-select: yes
 
-  Auto Tags:
-    _type: extractor/tags
-    _mod.to-multi-select: yes
-    include_auto_tags: yes
-    include_real_tags: no
+#  Auto Tags:
+#    _type: extractor/tags
+#    _mod.to-multi-select: yes
+#    include_auto_tags: yes
+#    include_real_tags: no
 
   Collections:
     _type: extractor/collections
@@ -105,9 +105,9 @@ extractors:
     _type: extractor/pdf/link
     _mod.to-url: yes
 
-  Keywords:
-    _type: extractor/wordcloud/words
-    _mod.to-multi-select: yes
+#  Keywords:
+#    _type: extractor/wordcloud/words
+#    _mod.to-multi-select: yes
 
 
 

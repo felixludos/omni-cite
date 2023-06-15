@@ -98,9 +98,9 @@ class Tags(Extractor):
 		                                                         'or include-real-tags must be True'
 	
 	def __call__(self, item, get_children=None):
-		return [tag['tag'] for tag in item['data']['tags']
-		        if (self.include_real_tags and tag.get('type', 0) == 0)
-		        or (self.include_auto_tags and tag.get('type', 0) == 1)]
+		return [tag['tag'].replace(',', '') for tag in item['data']['tags']
+		        if ((self.include_real_tags and tag.get('type', 0) == 0)
+		        or (self.include_auto_tags and tag.get('type', 0) == 1))]
 
 
 @fig.component('extractor/collections')
