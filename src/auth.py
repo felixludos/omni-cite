@@ -270,9 +270,15 @@ class OneDriveProcess(fig.Configurable):
 		                                  body={"type": {'download': 'embed'}.get(mode, mode),
 		                                        "scope": "anonymous"},)
 		            for path in paths]
-		
-		out = self.batch_send(reqs)
-		
+
+		try:
+			out = self.batch_send(reqs)
+		except Exception as e:
+			print('OneDrive: Failed to share files.')
+			print('Paths:')
+			print('\n'.join(f'  {path}' for path in paths))
+			raise e
+
 		if mode == 'download' and isinstance(out, list):
 			for r in out:
 				link = r.get('body', {}).get('link', {})

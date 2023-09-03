@@ -17,9 +17,12 @@
 #_meta.script_name: sync-notion
 #_meta.script_name: item-feature
 
-_meta.script_name: process
-#_meta.script_name: sharing
+#_meta.script_name: process
+_meta.script_name: sharing
 #_meta.script_name: publish
+
+# test database
+#notion_database_id: 299534b846794156a71756d126590d5d
 
 #_base: [secrets, notion]
 _base: [update]

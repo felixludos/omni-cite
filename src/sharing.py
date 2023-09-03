@@ -79,6 +79,12 @@ def onedrive_sharing(A):
 
 	if manager.is_real_run:
 		if len(paths):
+			missing = [path for path in paths if not (onedrive_root/path).exists()]
+			if len(missing):
+				print(f'Missing {len(missing)} paths in {onedrive_root}:')
+				print('\n'.join(f'  {path}' for path in missing))
+				raise FileNotFoundError(f'Missing {len(missing)} paths.')
+
 			if share_type is None:
 				try:
 					resps = auth.get_meta(list(paths.keys()))
