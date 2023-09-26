@@ -7,7 +7,7 @@ from . import publishing
 
 
 @fig.script('process', description='Process zotero items (including PDFs, code links, wordclouds, etc.).')
-def process(A: fig.Node):
+def process(A: fig.Configuration):
 	silent = A.pull('silent', False, silent=True)
 	silence_config = A.pull('silence-config', silent, silent=True)
 	silence_scripts = A.pull('silence-scripts', silent, silent=True)
