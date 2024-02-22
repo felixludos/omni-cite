@@ -85,7 +85,7 @@ class Creators(Extractor):
 			else:
 				raise self.ExtractionError(f'No name found for creator {creator}')
 
-		return '\n'.join(names)
+		return '\n'.join(names[:100])[:1000]
 
 
 @fig.component('extractor/tags')

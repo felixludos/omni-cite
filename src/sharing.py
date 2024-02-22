@@ -89,13 +89,20 @@ def onedrive_sharing(A):
 				try:
 					resps = auth.get_meta(list(paths.keys()))
 				except:
-					print(list(paths.keys()))
+					print(tabulate(sorted([((onedrive_root / path).exists(), path) for path in paths]),
+								   headers=['exists', 'paths']))
+					# print(list(paths.keys()))
 					raise
 				links = [(r.get('body', {}).get('webUrl') if r.get('status', 0) in {200, 201} else None)
 				         for r in resps]
 			
 			else:
-				resps = auth.share_files(list(paths.keys()), mode=share_type)
+				try:
+					resps = auth.share_files(list(paths.keys()), mode=share_type)
+				except:
+					print(tabulate([(path, (onedrive_root / path).exists()) for path in paths],
+								   headers=['path', 'exists']))
+					raise
 				links = [(r.get('body', {}).get('link', {}).get('webUrl')
 				          if r.get('status', 0) in {200, 201} else None)
 				         for r in resps]

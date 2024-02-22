@@ -271,13 +271,7 @@ class OneDriveProcess(fig.Configurable):
 		                                        "scope": "anonymous"},)
 		            for path in paths]
 
-		try:
-			out = self.batch_send(reqs)
-		except Exception as e:
-			print('OneDrive: Failed to share files.')
-			print('Paths:')
-			print('\n'.join(f'  {path}' for path in paths))
-			raise e
+		out = self.batch_send(reqs)
 
 		if mode == 'download' and isinstance(out, list):
 			for r in out:
