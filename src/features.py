@@ -259,6 +259,7 @@ class GithubExtractor(CodeExtractor, PDF_Feature):
 		transcript = cls.extract_transcript(path)
 		
 		urls = cls.extract_pdf_links(path) + cls.find_urls(transcript)
+		urls = [url if isinstance(url, str) else (url.decode() if isinstance(url, bytes) else str(url)) for url in urls]
 		urls = [(url if url.startswith('http') else 'http://' + url) for url in urls]
 		return urls
 	
